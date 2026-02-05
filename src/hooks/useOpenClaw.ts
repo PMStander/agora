@@ -28,7 +28,7 @@ export function useOpenClaw() {
     resolve: (value: unknown) => void;
     reject: (reason: unknown) => void;
   }>>(new Map());
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
