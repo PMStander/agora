@@ -54,6 +54,12 @@
   "plugins": {
     "shell": {
       "open": true
+    },
+    "updater": {
+      "endpoints": [
+        "https://github.com/PMStander/agora/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
     }
   }
 }
