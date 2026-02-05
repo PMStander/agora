@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+/* Dark theme (default) */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --color-background: hsl(224 71% 4%);
+  --color-foreground: hsl(213 31% 91%);
+  --color-card: hsl(224 71% 6%);
+  --color-card-foreground: hsl(213 31% 91%);
+  --color-popover: hsl(224 71% 6%);
+  --color-popover-foreground: hsl(213 31% 91%);
+  --color-primary: hsl(47 95% 60%);
+  --color-primary-foreground: hsl(224 71% 4%);
+  --color-secondary: hsl(215 20% 20%);
+  --color-secondary-foreground: hsl(213 31% 91%);
+  --color-muted: hsl(215 20% 15%);
+  --color-muted-foreground: hsl(215 20% 65%);
+  --color-accent: hsl(180 80% 50%);
+  --color-accent-foreground: hsl(224 71% 4%);
+  --color-destructive: hsl(0 62% 55%);
+  --color-destructive-foreground: hsl(213 31% 91%);
+  --color-border: hsl(215 20% 20%);
+  --color-input: hsl(215 20% 20%);
+  --color-ring: hsl(47 95% 60%);
+  --color-surface: hsl(224 71% 8%);
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+}
+
+/* Light theme */
+.light {
+  --color-background: hsl(0 0% 100%);
+  --color-foreground: hsl(224 71% 4%);
+  --color-card: hsl(0 0% 98%);
+  --color-card-foreground: hsl(224 71% 4%);
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(224 71% 4%);
+  --color-primary: hsl(47 95% 45%);
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-secondary: hsl(215 20% 96%);
+  --color-secondary-foreground: hsl(224 71% 4%);
+  --color-muted: hsl(215 20% 96%);
+  --color-muted-foreground: hsl(215 16% 47%);
+  --color-accent: hsl(180 80% 40%);
+  --color-accent-foreground: hsl(0 0% 100%);
+  --color-destructive: hsl(0 62% 55%);
+  --color-destructive-foreground: hsl(0 0% 100%);
+  --color-border: hsl(215 20% 88%);
+  --color-input: hsl(215 20% 88%);
+  --color-ring: hsl(47 95% 45%);
+  --color-surface: hsl(0 0% 96%);
+}
+
+body {
+  @apply bg-background text-foreground font-sans antialiased;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted-foreground);
+}
+
+/* Selection color */
+::selection {
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+}
+
+/* Smooth transitions for theme changes */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
