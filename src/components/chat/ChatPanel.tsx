@@ -51,7 +51,7 @@ export function ChatPanel() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   
   const { isLoading } = useAgentStore();
-  const { isConnected, sendMessage } = useOpenClaw();
+  const { isConnected, isConnecting, connect, sendMessage } = useOpenClaw();
   const activeAgent = useActiveAgent();
   const messages = useActiveMessages();
 
@@ -195,9 +195,18 @@ export function ChatPanel() {
           </button>
         </div>
         {!isConnected && (
-          <p className="text-xs text-red-400 mt-2">
-            ⚠️ Not connected to OpenClaw Gateway. Make sure it's running on port 18789.
-          </p>
+          <div className="flex items-center gap-2 mt-2">
+            <p className="text-xs text-red-400">
+              ⚠️ Not connected to OpenClaw Gateway. Make sure it's running on port 18789.
+            </p>
+            <button
+              onClick={() => connect()}
+              disabled={isConnecting}
+              className="text-xs text-primary hover:underline disabled:opacity-50"
+            >
+              {isConnecting ? 'Connecting...' : 'Retry'}
+            </button>
+          </div>
         )}
       </form>
     </div>

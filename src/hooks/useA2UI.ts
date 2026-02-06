@@ -26,47 +26,19 @@ export interface A2UIMessage {
   catalog?: string;
 }
 
-export function useA2UI() {
+const A2UI_ENDPOINT = 'http://127.0.0.1:18793/a2ui/stream';
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 10000;
+
+export function useA2UI(autoConnect = false) {
   const [isConnected, setIsConnected] = useState(false);
+  const [isEnabled, setIsEnabled] = useState(autoConnect);
   const [surfaces, setSurfaces] = useState<Map<string, A2UISurface>>(new Map());
   const [activeSurfaceId, setActiveSurfaceId] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
-
-  const connect = useCallback(() => {
-    if (eventSourceRef.current) return;
-
-    try {
-      // Connect to OpenClaw canvas host A2UI stream
-      const es = new EventSource('http://127.0.0.1:18793/a2ui/stream');
-      eventSourceRef.current = es;
-
-      es.onopen = () => {
-        console.log('[A2UI] Connected to canvas host');
-        setIsConnected(true);
-      };
-
-      es.onmessage = (event) => {
-        try {
-          const msg: A2UIMessage = JSON.parse(event.data);
-          handleMessage(msg);
-        } catch (e) {
-          console.error('[A2UI] Parse error:', e);
-        }
-      };
-
-      es.onerror = (error) => {
-        console.error('[A2UI] EventSource error:', error);
-        setIsConnected(false);
-        // Attempt reconnect after 5s
-        setTimeout(() => {
-          eventSourceRef.current = null;
-          connect();
-        }, 5000);
-      };
-    } catch (error) {
-      console.error('[A2UI] Connection error:', error);
-    }
-  }, []);
+  const retryCountRef = useRef(0);
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasLoggedErrorRef = useRef(false);
 
   const handleMessage = useCallback((msg: A2UIMessage) => {
     setSurfaces(prev => {
@@ -118,9 +90,6 @@ export function useA2UI() {
         case 'deleteSurface': {
           if (msg.surfaceId) {
             next.delete(msg.surfaceId);
-            if (activeSurfaceId === msg.surfaceId) {
-              setActiveSurfaceId(null);
-            }
           }
           break;
         }
@@ -128,28 +97,102 @@ export function useA2UI() {
       
       return next;
     });
-  }, [activeSurfaceId]);
+  }, []);
 
   const disconnect = useCallback(() => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
     eventSourceRef.current?.close();
     eventSourceRef.current = null;
     setIsConnected(false);
+    retryCountRef.current = 0;
   }, []);
 
-  // Auto-connect on mount
+  const connect = useCallback(() => {
+    if (eventSourceRef.current) return;
+
+    try {
+      console.log('[A2UI] Connecting to canvas host...');
+      const es = new EventSource(A2UI_ENDPOINT);
+      eventSourceRef.current = es;
+
+      es.onopen = () => {
+        console.log('[A2UI] Connected to canvas host');
+        setIsConnected(true);
+        retryCountRef.current = 0;
+        hasLoggedErrorRef.current = false;
+      };
+
+      es.onmessage = (event) => {
+        try {
+          const msg: A2UIMessage = JSON.parse(event.data);
+          handleMessage(msg);
+        } catch (e) {
+          console.error('[A2UI] Parse error:', e);
+        }
+      };
+
+      es.onerror = () => {
+        // Only log once to avoid spam
+        if (!hasLoggedErrorRef.current) {
+          console.log('[A2UI] Canvas host not available (port 18793). Will retry silently.');
+          hasLoggedErrorRef.current = true;
+        }
+        
+        setIsConnected(false);
+        eventSourceRef.current?.close();
+        eventSourceRef.current = null;
+        
+        // Retry with backoff, but only if enabled and under max retries
+        if (isEnabled && retryCountRef.current < MAX_RETRIES) {
+          retryCountRef.current++;
+          retryTimeoutRef.current = setTimeout(() => {
+            connect();
+          }, RETRY_DELAY_MS * retryCountRef.current);
+        }
+      };
+    } catch {
+      // Silent fail - canvas host might not be running
+      if (!hasLoggedErrorRef.current) {
+        console.log('[A2UI] Canvas host not available');
+        hasLoggedErrorRef.current = true;
+      }
+    }
+  }, [handleMessage, isEnabled]);
+
+  // Connect/disconnect based on enabled state
   useEffect(() => {
-    connect();
+    if (isEnabled) {
+      connect();
+    } else {
+      disconnect();
+    }
     return () => disconnect();
-  }, [connect, disconnect]);
+  }, [isEnabled, connect, disconnect]);
+
+  const enable = useCallback(() => {
+    retryCountRef.current = 0;
+    hasLoggedErrorRef.current = false;
+    setIsEnabled(true);
+  }, []);
+
+  const disable = useCallback(() => {
+    setIsEnabled(false);
+  }, []);
 
   const activeSurface = activeSurfaceId ? surfaces.get(activeSurfaceId) : null;
 
   return {
     isConnected,
+    isEnabled,
     surfaces,
     activeSurface,
     activeSurfaceId,
     setActiveSurfaceId,
+    enable,
+    disable,
     connect,
     disconnect,
   };

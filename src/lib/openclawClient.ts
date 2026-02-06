@@ -1,6 +1,6 @@
 /**
  * Singleton OpenClaw WebSocket Client
- * Manages a single connection shared across all components
+ * Implements OpenClaw Gateway Protocol v3
  */
 
 type MessageHandler = (msg: OpenClawMessage) => void;
@@ -20,6 +20,7 @@ export interface OpenClawMessage {
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 const GATEWAY_URL = 'ws://127.0.0.1:18789';
+const PROTOCOL_VERSION = 3;
 
 class OpenClawClient {
   private ws: WebSocket | null = null;
@@ -40,6 +41,7 @@ class OpenClawClient {
   get isConnected() { return this._status === 'connected'; }
 
   private setStatus(status: ConnectionStatus, error?: string) {
+    console.log(`[OpenClaw] Status: ${this._status} -> ${status}`, error ? `(${error})` : '');
     this._status = status;
     this._error = error || null;
     this.statusHandlers.forEach(h => h(status));
@@ -68,7 +70,7 @@ class OpenClawClient {
     }
 
     // Already connected
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    if (this.ws?.readyState === WebSocket.OPEN && this._status === 'connected') {
       return Promise.resolve();
     }
 
@@ -88,38 +90,83 @@ class OpenClawClient {
         }, 10000);
 
         this.ws.onopen = () => {
-          console.log('[OpenClaw] WebSocket opened, sending handshake...');
-          clearTimeout(connectTimeout);
-
-          // Send connect handshake
-          const connectId = this.nextId();
-          this.pendingRequests.set(connectId, {
-            resolve: () => {
-              console.log('[OpenClaw] Connected successfully!');
-              this.setStatus('connected');
-              this.connectPromise = null;
-              resolve();
-            },
-            reject: (err) => {
-              console.error('[OpenClaw] Handshake failed:', err);
-              this.setStatus('error', 'Handshake failed');
-              this.connectPromise = null;
-              reject(err);
-            }
-          });
-
-          this.ws!.send(JSON.stringify({
-            type: 'req',
-            id: connectId,
-            method: 'connect',
-            params: {}
-          }));
+          console.log('[OpenClaw] WebSocket opened, waiting for challenge...');
+          // Don't clear timeout yet - wait for successful handshake
         };
 
         this.ws.onmessage = (event) => {
           try {
             const msg: OpenClawMessage = JSON.parse(event.data);
-            this.handleMessage(msg);
+            console.log('[OpenClaw] Received:', msg.type, msg.id || msg.event);
+
+            // Handle connect.challenge event
+            if (msg.type === 'event' && msg.event === 'connect.challenge') {
+              console.log('[OpenClaw] Received challenge, sending handshake...');
+              // Note: nonce from payload can be used for signed auth if needed
+              
+              // Send connect handshake with proper protocol params
+              const connectId = this.nextId();
+              this.pendingRequests.set(connectId, {
+                resolve: () => {
+                  console.log('[OpenClaw] Connected successfully!');
+                  clearTimeout(connectTimeout);
+                  this.setStatus('connected');
+                  this.connectPromise = null;
+                  resolve();
+                },
+                reject: (err) => {
+                  console.error('[OpenClaw] Handshake failed:', err);
+                  clearTimeout(connectTimeout);
+                  this.setStatus('error', 'Handshake failed');
+                  this.connectPromise = null;
+                  reject(err);
+                }
+              });
+
+              this.ws!.send(JSON.stringify({
+                type: 'req',
+                id: connectId,
+                method: 'connect',
+                params: {
+                  minProtocol: PROTOCOL_VERSION,
+                  maxProtocol: PROTOCOL_VERSION,
+                  client: {
+                    id: 'cli',  // Use 'cli' to avoid device pairing requirement
+                    displayName: 'Agora',
+                    version: '0.1.0',
+                    platform: 'macos',
+                    mode: 'cli'  // Match the ID
+                  },
+                  auth: {
+                    token: '15a28c1c50501b7ab7b60e9e0c10876d282cda40d71c9bb2'  // Gateway auth token
+                  },
+                  role: 'operator',
+                  scopes: ['operator.read', 'operator.write', 'operator.admin'],
+                  caps: [],
+                  commands: [],
+                  permissions: {},
+                  locale: navigator.language || 'en-US',
+                  userAgent: 'Agora/0.1.0'
+                }
+              }));
+              return;
+            }
+
+            // Handle response messages
+            if (msg.type === 'res') {
+              const pending = this.pendingRequests.get(msg.id!);
+              if (pending) {
+                this.pendingRequests.delete(msg.id!);
+                if (msg.error || msg.ok === false) {
+                  pending.reject(msg.error || new Error('Request failed'));
+                } else {
+                  pending.resolve(msg.payload);
+                }
+              }
+            }
+
+            // Notify all message handlers
+            this.messageHandlers.forEach(h => h(msg));
           } catch (e) {
             console.error('[OpenClaw] Parse error:', e);
           }
@@ -136,12 +183,20 @@ class OpenClawClient {
         this.ws.onclose = (event) => {
           console.log('[OpenClaw] WebSocket closed:', event.code, event.reason);
           clearTimeout(connectTimeout);
+          
+          const wasConnected = this._status === 'connected';
           this.setStatus('disconnected');
           this.ws = null;
           this.connectPromise = null;
 
-          // Auto-reconnect after 3 seconds if not clean close
-          if (!event.wasClean && this._status !== 'error') {
+          // Reject any pending requests
+          this.pendingRequests.forEach((pending, id) => {
+            pending.reject(new Error('Connection closed'));
+            this.pendingRequests.delete(id);
+          });
+
+          // Auto-reconnect after 3 seconds if was previously connected
+          if (wasConnected) {
             this.reconnectTimeout = setTimeout(() => {
               console.log('[OpenClaw] Attempting reconnect...');
               this.connect().catch(console.error);
@@ -159,27 +214,8 @@ class OpenClawClient {
     return this.connectPromise;
   }
 
-  private handleMessage(msg: OpenClawMessage) {
-    console.log('[OpenClaw] Received:', msg.type, msg.id || msg.event);
-
-    if (msg.type === 'res') {
-      const pending = this.pendingRequests.get(msg.id!);
-      if (pending) {
-        this.pendingRequests.delete(msg.id!);
-        if (msg.error || msg.ok === false) {
-          pending.reject(msg.error || new Error('Request failed'));
-        } else {
-          pending.resolve(msg.payload);
-        }
-      }
-    }
-
-    // Notify all message handlers
-    this.messageHandlers.forEach(h => h(msg));
-  }
-
   async send(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this._status !== 'connected') {
       await this.connect();
     }
 
@@ -209,8 +245,11 @@ class OpenClawClient {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
-    this.ws?.close();
-    this.ws = null;
+    if (this.ws) {
+      this.ws.onclose = null; // Prevent auto-reconnect
+      this.ws.close();
+      this.ws = null;
+    }
     this.setStatus('disconnected');
   }
 }

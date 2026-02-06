@@ -22,8 +22,8 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
   // Check autostart status on mount
   useEffect(() => {
-    isEnabled().then(setAutoStartStatus).catch(console.error);
-    isPermissionGranted().then(setNotificationPermission).catch(console.error);
+    isEnabled().then(setAutoStartStatus).catch(() => setAutoStartStatus(false));
+    isPermissionGranted().then(setNotificationPermission).catch(() => setNotificationPermission(false));
   }, []);
 
   const handleAutoStartToggle = async (enabled: boolean) => {
@@ -37,28 +37,39 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       settings.setAutoStartEnabled(enabled);
     } catch (err) {
       console.error('Failed to toggle autostart:', err);
+      // Still update UI state even if Tauri API fails
+      setAutoStartStatus(false);
     }
   };
 
   const handleNotificationToggle = async (enabled: boolean) => {
-    if (enabled && !notificationPermission) {
-      const permission = await requestPermission();
-      setNotificationPermission(permission === 'granted');
-      if (permission !== 'granted') return;
+    try {
+      if (enabled && !notificationPermission) {
+        const permission = await requestPermission();
+        setNotificationPermission(permission === 'granted');
+        if (permission !== 'granted') return;
+      }
+      settings.setNotificationsEnabled(enabled);
+    } catch (err) {
+      console.error('Failed to toggle notifications:', err);
+      setNotificationPermission(false);
     }
-    settings.setNotificationsEnabled(enabled);
   };
 
   const testNotification = async () => {
-    if (!notificationPermission) {
-      const permission = await requestPermission();
-      setNotificationPermission(permission === 'granted');
-      if (permission !== 'granted') return;
+    try {
+      if (!notificationPermission) {
+        const permission = await requestPermission();
+        setNotificationPermission(permission === 'granted');
+        if (permission !== 'granted') return;
+      }
+      sendNotification({
+        title: 'Agora',
+        body: 'Notifications are working! 🏛️',
+      });
+    } catch (err) {
+      console.error('Failed to send test notification:', err);
     }
-    sendNotification({
-      title: 'Agora',
-      body: 'Notifications are working! 🏛️',
-    });
   };
 
   if (!isOpen) return null;
