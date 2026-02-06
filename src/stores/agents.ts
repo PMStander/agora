@@ -44,6 +44,7 @@ interface AgentState {
   updateLastMessage: (agentId: string, content: string) => void;
   setConnected: (connected: boolean) => void;
   setLoading: (loading: boolean) => void;
+  clearMessages: (agentId: string) => void;
 }
 
 // Our agent roster - 'main' maps to the default OpenClaw agent
@@ -208,6 +209,14 @@ export const useAgentStore = create<AgentState>((set) => ({
 
   setConnected: (connected) => set({ isConnected: connected }),
   setLoading: (loading) => set({ isLoading: loading }),
+  
+  clearMessages: (agentId) =>
+    set((state) => ({
+      messagesByAgent: {
+        ...state.messagesByAgent,
+        [agentId]: [],
+      },
+    })),
 }));
 
 // Selector helpers

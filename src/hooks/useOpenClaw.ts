@@ -25,6 +25,9 @@ export function useOpenClaw() {
   
   const { addMessage, updateLastMessage, setConnected, setLoading, activeAgentId } = useAgentStore();
 
+  // Track whether we've already loaded history for the main agent
+  const historyLoadedRef = useRef(false);
+
   // Subscribe to status changes and try to connect if disconnected
   useEffect(() => {
     const unsubStatus = openclawClient.onStatusChange((newStatus) => {
@@ -33,9 +36,10 @@ export function useOpenClaw() {
       setConnected(newStatus === 'connected');
       setConnectionError(openclawClient.error);
 
-      // Load chat history when connected
-      if (newStatus === 'connected') {
-        loadHistory().catch(console.error);
+      // Load chat history when connected (only for main agent, only once)
+      if (newStatus === 'connected' && !historyLoadedRef.current) {
+        historyLoadedRef.current = true;
+        loadHistory('main', 'main').catch(console.error);
       }
     });
 
@@ -88,19 +92,19 @@ export function useOpenClaw() {
     return openclawClient.connect();
   }, []);
 
-  const loadHistory = useCallback(async (sessionKey: string = 'main') => {
+  const loadHistory = useCallback(async (sessionKey: string = 'main', targetAgentId?: string) => {
+    const agentId = targetAgentId || activeAgentId;
     try {
       const result = await openclawClient.send('chat.history', {
         sessionKey,
         limit: 50,
       }) as any;
       if (result?.messages && Array.isArray(result.messages)) {
-        console.log('[useOpenClaw] Loaded history:', result.messages.length, 'messages');
-        // Process and display history messages
+        console.log('[useOpenClaw] Loaded history:', result.messages.length, 'messages for agent', agentId);
         for (const msg of result.messages) {
           const text = extractText(msg);
           if (text && msg.role) {
-            addMessage(activeAgentId, {
+            addMessage(agentId, {
               role: msg.role,
               content: text,
             });
@@ -132,9 +136,15 @@ export function useOpenClaw() {
     streamBufferRef.current = '';
 
     try {
+      // For the main agent (Marcus), send directly
+      // For other agents, route through main with agent context
+      const actualMessage = targetAgent === 'main' 
+        ? message 
+        : `[Speaking as ${targetAgent}] ${message}`;
+      
       const result = await openclawClient.send('chat.send', {
         sessionKey: 'main',
-        message,
+        message: actualMessage,
         deliver: false,
         idempotencyKey: `msg-${Date.now()}`,
       });
