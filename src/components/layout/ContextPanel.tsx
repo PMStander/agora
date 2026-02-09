@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useActiveAgent } from '../../stores/agents';
 import { useA2UI } from '../../hooks/useA2UI';
+import { useAutoSurface } from '../../hooks/useAutoSurface';
 import { A2UIRenderer, type A2UIActionEvent } from '../a2ui/A2UIRenderer';
-import { A2UIDemo } from '../a2ui/A2UIDemo';
 import { cn } from '../../lib/utils';
 import { useOpenClaw } from '../../hooks/useOpenClaw';
 import {
@@ -14,13 +14,19 @@ import {
 } from '../../hooks/useGatewayConfig';
 import { HandoffPanel } from '../context/HandoffPanel';
 import { UpcomingEvents } from '../calendar/UpcomingEvents';
+import { ChatPanel } from '../chat/ChatPanel';
+import { useMissionControlStore } from '../../stores/missionControl';
+import { useCrmStore } from '../../stores/crm';
+import { useInvoicingStore } from '../../stores/invoicing';
+import { useNotificationsStore } from '../../stores/notifications';
+import { useMemoryIntelligence } from '../../hooks/useMemoryIntelligence';
 
 interface ContextPanelProps {
   isOpen: boolean;
   onToggle: () => void;
 }
 
-type PanelMode = 'agent-info' | 'tools' | 'a2ui';
+type PanelMode = 'agent-info' | 'tools' | 'a2ui' | 'chat';
 
 // ── Model Section ──────────────────────────────────────────────────────
 
@@ -171,7 +177,7 @@ function ModelSection() {
           >
             {catalog.map(p => (
               <option key={p.id} value={p.id} disabled={canValidateModels && !isProviderSupported(p.id)}>
-                {p.icon} {p.label}{p.note ? ` (${p.note})` : ''}{canValidateModels && !isProviderSupported(p.id) ? ' (Unavailable)' : ''}
+                {p.iconText ?? '⚡'} {p.label}{p.note ? ` (${p.note})` : ''}{canValidateModels && !isProviderSupported(p.id) ? ' (Unavailable)' : ''}
               </option>
             ))}
           </select>
@@ -264,12 +270,14 @@ function SkillsSection() {
   const activeAgent = useActiveAgent();
   const {
     skillEntries, configuredSkills, agentScopedGatewaySkills, activeAgentConfig,
-    allSkills, loading, patching, setSkills
+    allSkills, loading, patching, setSkills, skillsFromGateway,
   } = useGatewayConfig({ agentId: activeAgent?.id });
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [viewingSkillId, setViewingSkillId] = useState<string | null>(null);
+  const [removeConfirm, setRemoveConfirm] = useState(false);
 
   const hasExplicitAgentSkills = !!activeAgentConfig && Array.isArray(activeAgentConfig.skills);
   const effectiveConfiguredSkills = hasExplicitAgentSkills
@@ -284,6 +292,12 @@ function SkillsSection() {
     ? []
     : skillEntries.map(id => ({ key: id, name: SKILL_CATALOG[id]?.label }));
   const configuredSkillSet = new Set(effectiveConfiguredSkills);
+
+  // Reset viewing skill when agent changes
+  useEffect(() => {
+    setViewingSkillId(null);
+    setRemoveConfirm(false);
+  }, [activeAgent?.id]);
 
   // Initialize selected skills when entering edit mode
   useEffect(() => {
@@ -316,6 +330,18 @@ function SkillsSection() {
     }
   };
 
+  const handleRemoveSkill = async (skillId: string) => {
+    setSaveError(null);
+    try {
+      const updated = effectiveConfiguredSkills.filter(s => s !== skillId);
+      await setSkills(updated, activeAgent?.id);
+      setViewingSkillId(null);
+      setRemoveConfirm(false);
+    } catch (err) {
+      setSaveError(String(err));
+    }
+  };
+
   if (loading && displaySkills.length === 0) {
     return (
       <div className="p-3 rounded-lg bg-muted/50 animate-pulse">
@@ -327,7 +353,139 @@ function SkillsSection() {
     );
   }
 
-  // Edit mode
+  // ── Skill Detail View ──
+  if (viewingSkillId) {
+    const meta = SKILL_CATALOG[viewingSkillId];
+    const gatewayEntry = skillsFromGateway.find(
+      s => s.key === viewingSkillId || s.skillKey === viewingSkillId || s.name === viewingSkillId
+    );
+    const label = meta?.label ?? viewingSkillId;
+    const icon = meta?.icon ?? '🔧';
+    const category = meta?.category ?? 'Unknown';
+    const description = gatewayEntry?.description ?? null;
+    const source = gatewayEntry?.source ?? null;
+    const filePath = gatewayEntry?.filePath ?? null;
+    const isEnabled = gatewayEntry?.enabled !== false;
+    const isAssigned = configuredSkillSet.has(viewingSkillId);
+
+    return (
+      <div className="space-y-3">
+        {/* Back + title row */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setViewingSkillId(null); setRemoveConfirm(false); setSaveError(null); }}
+            className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <div className="text-xs text-muted-foreground uppercase tracking-wider">Skill Detail</div>
+        </div>
+
+        <div className="p-3 rounded-lg bg-muted/50 border border-zinc-700 space-y-4">
+          {/* Header */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-xl">
+              {icon}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-sm">{label}</div>
+              <div className="text-xs text-muted-foreground">{viewingSkillId}</div>
+            </div>
+            {isAssigned && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-500/10 text-green-400 border border-green-500/20">
+                Active
+              </span>
+            )}
+          </div>
+
+          {/* Info rows */}
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Category</span>
+              <span className="text-foreground">{category}</span>
+            </div>
+            {description && (
+              <div>
+                <span className="text-muted-foreground block mb-1">Description</span>
+                <span className="text-foreground/80 block">{description}</span>
+              </div>
+            )}
+            {source && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Source</span>
+                <span className="text-foreground font-mono text-[11px]">{source}</span>
+              </div>
+            )}
+            {filePath && (
+              <div>
+                <span className="text-muted-foreground block mb-1">Path</span>
+                <span className="text-foreground/60 block font-mono text-[10px] break-all">{filePath}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Status</span>
+              <span className={isEnabled ? 'text-green-400' : 'text-zinc-500'}>{isEnabled ? 'Enabled' : 'Disabled'}</span>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="border-t border-zinc-700 pt-3 space-y-2">
+            {/* Edit all skills */}
+            <button
+              onClick={() => { setViewingSkillId(null); setEditing(true); }}
+              className="w-full px-3 py-1.5 text-xs font-medium rounded transition-colors bg-amber-500/20 text-amber-400 hover:bg-amber-500/30"
+            >
+              Edit All Skills
+            </button>
+
+            {/* Remove from agent */}
+            {isAssigned && !removeConfirm && (
+              <button
+                onClick={() => setRemoveConfirm(true)}
+                className="w-full px-3 py-1.5 text-xs font-medium rounded transition-colors bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
+              >
+                Remove from {activeAgent?.name ?? 'Agent'}
+              </button>
+            )}
+
+            {/* Confirm remove */}
+            {isAssigned && removeConfirm && (
+              <div className="space-y-2">
+                <div className="text-xs text-red-400">
+                  Remove <strong>{label}</strong> from this agent? This updates the gateway config.
+                </div>
+                {saveError && <div className="text-xs text-red-400">{saveError}</div>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleRemoveSkill(viewingSkillId)}
+                    disabled={patching}
+                    className={cn(
+                      'flex-1 px-3 py-1.5 text-xs font-medium rounded transition-colors',
+                      patching
+                        ? 'bg-red-500/10 text-red-400/50 cursor-wait'
+                        : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                    )}
+                  >
+                    {patching ? 'Removing…' : 'Confirm Remove'}
+                  </button>
+                  <button
+                    onClick={() => setRemoveConfirm(false)}
+                    className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Edit mode ──
   if (editing) {
     return (
       <div className="space-y-3">
@@ -398,7 +556,7 @@ function SkillsSection() {
     );
   }
 
-  // Display mode
+  // ── Display mode ──
   if (displaySkills.length === 0) {
     return (
       <div className="space-y-2">
@@ -445,19 +603,20 @@ function SkillsSection() {
           const meta = SKILL_CATALOG[skillId];
           const isConfigured = configuredSkillSet.has(skillId) || skillEntries.includes(skillId);
           return (
-            <span
+            <button
               key={skillId}
+              onClick={() => setViewingSkillId(skillId)}
               className={cn(
-                'inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors',
+                'inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors cursor-pointer',
                 isConfigured
-                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                  : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20'
+                  : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:bg-zinc-700'
               )}
-              title={meta?.label ?? skillName}
+              title={`View ${meta?.label ?? skillName}`}
             >
               <span>{meta?.icon ?? '🔧'}</span>
               <span className="truncate max-w-[80px]">{meta?.label ?? skillName}</span>
-            </span>
+            </button>
           );
         })}
       </div>
@@ -474,11 +633,351 @@ function SkillsSection() {
   );
 }
 
+// ── Tools Panel ─────────────────────────────────────────────────────────
+
+function ToolsPanel() {
+  const missions = useMissionControlStore((s) => s.missions);
+  const pendingApprovals = useMissionControlStore((s) => s.pendingApprovals);
+  const setActiveTab = useMissionControlStore((s) => s.setActiveTab);
+  const deals = useCrmStore((s) => s.deals);
+  const contacts = useCrmStore((s) => s.contacts);
+  const invoices = useInvoicingStore((s) => s.invoices);
+  const quotes = useInvoicingStore((s) => s.quotes);
+  const unreadCount = useNotificationsStore((s) => s.notifications.filter((n) => !n.is_read).length);
+  const { priorities, addPriority, removePriority } = useMemoryIntelligence();
+  const [newPriorityTitle, setNewPriorityTitle] = useState('');
+
+  // Computed stats
+  const missionStats = useMemo(() => {
+    const running = missions.filter((m) => m.status === 'in_progress' || m.status === 'assigned').length;
+    const pending = missions.filter((m) => m.status === 'scheduled' || m.status === 'pending_review').length;
+    const completed = missions.filter((m) => m.status === 'done').length;
+    const failed = missions.filter((m) => m.status === 'failed').length;
+    return { running, pending, completed, failed, total: missions.length };
+  }, [missions]);
+
+  const dealStats = useMemo(() => {
+    const open = deals.filter((d) => d.status === 'open');
+    const won = deals.filter((d) => d.status === 'won');
+    const totalValue = open.reduce((sum, d) => sum + (d.amount ?? 0), 0);
+    const wonValue = won.reduce((sum, d) => sum + (d.amount ?? 0), 0);
+    return { openCount: open.length, wonCount: won.length, totalValue, wonValue };
+  }, [deals]);
+
+  const invoiceStats = useMemo(() => {
+    const overdue = invoices.filter((i) => i.status === 'overdue');
+    const outstanding = invoices.filter((i) => ['sent', 'viewed', 'partially_paid'].includes(i.status));
+    const overdueTotal = overdue.reduce((sum, i) => sum + i.total, 0);
+    const outstandingTotal = outstanding.reduce((sum, i) => sum + i.total, 0);
+    return { overdueCount: overdue.length, outstandingCount: outstanding.length, overdueTotal, outstandingTotal };
+  }, [invoices]);
+
+  const pendingQuotes = useMemo(() => {
+    return quotes.filter((q) => ['draft', 'sent'].includes(q.status));
+  }, [quotes]);
+
+  const hotLeads = useMemo(() => {
+    return [...contacts]
+      .filter((c) => (c.lead_score ?? 0) > 0)
+      .sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0))
+      .slice(0, 3);
+  }, [contacts]);
+
+  const formatCurrency = (amount: number) => {
+    if (amount >= 1_000_000) return `R ${(amount / 1_000_000).toFixed(1)}M`;
+    if (amount >= 1_000) return `R ${(amount / 1_000).toFixed(1)}K`;
+    return `R ${amount.toFixed(0)}`;
+  };
+
+  return (
+    <div className="h-full overflow-y-auto p-4">
+      <div className="space-y-4">
+
+        {/* Quick Stats Grid */}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => setActiveTab('mission-control')}
+            className="p-2.5 rounded-lg bg-muted/50 text-left hover:bg-muted transition-colors"
+          >
+            <div className="text-lg font-semibold text-blue-400">{missionStats.running}</div>
+            <div className="text-[11px] text-muted-foreground">Active Missions</div>
+            {missionStats.pending > 0 && (
+              <div className="text-[10px] text-amber-400 mt-0.5">{missionStats.pending} pending</div>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('crm')}
+            className="p-2.5 rounded-lg bg-muted/50 text-left hover:bg-muted transition-colors"
+          >
+            <div className="text-lg font-semibold text-emerald-400">{dealStats.openCount}</div>
+            <div className="text-[11px] text-muted-foreground">Open Deals</div>
+            {dealStats.totalValue > 0 && (
+              <div className="text-[10px] text-zinc-400 mt-0.5">{formatCurrency(dealStats.totalValue)}</div>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('invoicing')}
+            className="p-2.5 rounded-lg bg-muted/50 text-left hover:bg-muted transition-colors"
+          >
+            <div className={cn('text-lg font-semibold', invoiceStats.overdueCount > 0 ? 'text-red-400' : 'text-zinc-300')}>
+              {invoiceStats.outstandingCount}
+            </div>
+            <div className="text-[11px] text-muted-foreground">Invoices Due</div>
+            {invoiceStats.overdueCount > 0 && (
+              <div className="text-[10px] text-red-400 mt-0.5">{invoiceStats.overdueCount} overdue</div>
+            )}
+          </button>
+
+          <div className="p-2.5 rounded-lg bg-muted/50 text-left">
+            <div className={cn('text-lg font-semibold', unreadCount > 0 ? 'text-amber-400' : 'text-zinc-300')}>
+              {unreadCount}
+            </div>
+            <div className="text-[11px] text-muted-foreground">Unread Alerts</div>
+            {pendingApprovals.length > 0 && (
+              <div className="text-[10px] text-purple-400 mt-0.5">{pendingApprovals.length} approvals</div>
+            )}
+          </div>
+        </div>
+
+        {/* Shared Priorities */}
+        <div>
+          <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center justify-between">
+            <span>Priorities</span>
+            <span className="text-[10px] text-zinc-500 normal-case">shared across all agents</span>
+          </div>
+          {priorities.filter(p => p.status === 'active').length > 0 ? (
+            <div className="space-y-1">
+              {priorities.filter(p => p.status === 'active').map((p) => (
+                <div key={p.id} className="flex items-start gap-2 p-2 rounded-lg bg-muted/40 group">
+                  <span className="text-amber-400 text-xs font-bold mt-0.5 shrink-0">
+                    {p.priority_rank}.
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-zinc-200">{p.title}</div>
+                    {p.description && (
+                      <div className="text-[10px] text-zinc-500 mt-0.5 line-clamp-2">{p.description}</div>
+                    )}
+                    <div className="text-[10px] text-zinc-600 mt-0.5">
+                      {p.scope !== 'global' && <span className="text-purple-400">{p.scope}</span>}
+                      {p.set_by !== 'user' && <span> &middot; set by {p.set_by}</span>}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => removePriority(p.id)}
+                    className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-emerald-400 transition-all shrink-0 text-xs"
+                    title="Mark complete"
+                  >
+                    ✓
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-zinc-600 p-2 rounded-lg bg-muted/30 text-center">
+              No active priorities — add one below
+            </div>
+          )}
+          <form
+            className="mt-2 flex gap-1.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (newPriorityTitle.trim()) {
+                addPriority(newPriorityTitle.trim());
+                setNewPriorityTitle('');
+              }
+            }}
+          >
+            <input
+              type="text"
+              value={newPriorityTitle}
+              onChange={(e) => setNewPriorityTitle(e.target.value)}
+              placeholder="Add a priority..."
+              className="flex-1 px-2.5 py-1.5 text-xs rounded-lg bg-muted/50 border border-zinc-700/50 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50"
+            />
+            <button
+              type="submit"
+              disabled={!newPriorityTitle.trim()}
+              className="px-2.5 py-1.5 text-xs rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              +
+            </button>
+          </form>
+        </div>
+
+        {/* Pending Approvals */}
+        {pendingApprovals.length > 0 && (
+          <div className="rounded-lg border border-purple-500/30 bg-purple-500/10 p-3">
+            <div className="text-xs text-purple-300 uppercase tracking-wider mb-2 font-medium">
+              Pending Approvals
+            </div>
+            <div className="space-y-1.5">
+              {pendingApprovals.slice(0, 3).map((a) => (
+                <div key={a.taskId} className="flex items-start gap-2 text-xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 shrink-0" />
+                  <span className="text-zinc-300 line-clamp-2">{a.reason}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Overdue Invoices Alert */}
+        {invoiceStats.overdueCount > 0 && (
+          <button
+            onClick={() => setActiveTab('invoicing')}
+            className="w-full rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-left hover:bg-red-500/15 transition-colors"
+          >
+            <div className="text-xs text-red-300 uppercase tracking-wider mb-1 font-medium">
+              Overdue
+            </div>
+            <div className="text-sm text-zinc-200">
+              {invoiceStats.overdueCount} invoice{invoiceStats.overdueCount > 1 ? 's' : ''} — {formatCurrency(invoiceStats.overdueTotal)}
+            </div>
+          </button>
+        )}
+
+        {/* Hot Leads */}
+        {hotLeads.length > 0 && (
+          <div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+              Hot Leads
+            </div>
+            <div className="space-y-1.5">
+              {hotLeads.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setActiveTab('crm')}
+                  className="w-full flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted/50 transition-colors text-left"
+                >
+                  <div className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center text-[10px] font-semibold shrink-0">
+                    {(c.first_name?.[0] ?? '').toUpperCase()}{(c.last_name?.[0] ?? '').toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-zinc-200 truncate">{c.first_name} {c.last_name}</div>
+                    <div className="text-[10px] text-zinc-500 truncate">{c.job_title || c.email}</div>
+                  </div>
+                  <div className="shrink-0">
+                    <span className={cn(
+                      'px-1.5 py-0.5 rounded text-[10px] font-medium',
+                      c.lead_score_label === 'hot' ? 'bg-red-500/20 text-red-300' :
+                      c.lead_score_label === 'warm' ? 'bg-amber-500/20 text-amber-300' :
+                      'bg-zinc-700 text-zinc-400'
+                    )}>
+                      {c.lead_score ?? 0}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Pending Quotes */}
+        {pendingQuotes.length > 0 && (
+          <div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+              Pending Quotes ({pendingQuotes.length})
+            </div>
+            <div className="space-y-1.5">
+              {pendingQuotes.slice(0, 3).map((q) => (
+                <button
+                  key={q.id}
+                  onClick={() => setActiveTab('invoicing')}
+                  className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors text-left"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm text-zinc-200 truncate">{q.title || q.quote_number}</div>
+                    <div className="text-[10px] text-zinc-500">{q.status}</div>
+                  </div>
+                  <div className="text-sm font-medium text-amber-300 shrink-0">
+                    {formatCurrency(q.total)}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Upcoming Events */}
+        <div>
+          <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+            Upcoming Events
+          </div>
+          <UpcomingEvents limit={3} />
+        </div>
+
+        {/* Quick Navigation */}
+        <div>
+          <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+            Quick Nav
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {([
+              { tab: 'mission-control' as const, icon: '🎯', label: 'Missions' },
+              { tab: 'crm' as const, icon: '👥', label: 'CRM' },
+              { tab: 'products' as const, icon: '📦', label: 'Products' },
+              { tab: 'projects' as const, icon: '📐', label: 'Projects' },
+              { tab: 'invoicing' as const, icon: '💰', label: 'Invoicing' },
+              { tab: 'reports' as const, icon: '📊', label: 'Reports' },
+              { tab: 'automation' as const, icon: '⚡', label: 'Workflows' },
+              { tab: 'calendar' as const, icon: '📅', label: 'Calendar' },
+              { tab: 'teams' as const, icon: '🏛️', label: 'Teams' },
+            ]).map((nav) => (
+              <button
+                key={nav.tab}
+                onClick={() => setActiveTab(nav.tab)}
+                className="p-2 rounded-lg bg-muted/30 text-center hover:bg-muted/60 transition-colors"
+              >
+                <div className="text-base">{nav.icon}</div>
+                <div className="text-[10px] text-zinc-400 mt-0.5">{nav.label}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Mission Completion Summary */}
+        {missionStats.total > 0 && (
+          <div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+              Mission Progress
+            </div>
+            <div className="p-3 rounded-lg bg-muted/50">
+              <div className="flex items-center justify-between text-xs mb-2">
+                <span className="text-zinc-400">
+                  {missionStats.completed}/{missionStats.total} completed
+                </span>
+                <span className="text-zinc-300 font-medium">
+                  {missionStats.total > 0 ? Math.round((missionStats.completed / missionStats.total) * 100) : 0}%
+                </span>
+              </div>
+              <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-amber-500 transition-all duration-300"
+                  style={{ width: `${missionStats.total > 0 ? (missionStats.completed / missionStats.total) * 100 : 0}%` }}
+                />
+              </div>
+              <div className="flex items-center gap-3 mt-2 text-[10px]">
+                {missionStats.running > 0 && <span className="text-blue-400">{missionStats.running} running</span>}
+                {missionStats.failed > 0 && <span className="text-red-400">{missionStats.failed} failed</span>}
+                {dealStats.wonCount > 0 && <span className="text-emerald-400">{dealStats.wonCount} deals won</span>}
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
 // ── Main Panel ─────────────────────────────────────────────────────────
 
 export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
   const activeAgent = useActiveAgent();
   const { sendMessage, isConnected: gatewayConnected } = useOpenClaw();
+  const activeTab = useMissionControlStore((s) => s.activeTab);
   const {
     isConnected: a2uiConnected,
     isEnabled: a2uiEnabled,
@@ -490,9 +989,16 @@ export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
     pushMessages,
     enable: enableA2UI,
   } = useA2UI(true);
+
+  // Auto-generate A2UI surfaces from agent response text (weather, calendar, missions, etc.)
+  useAutoSurface({ enabled: true, pushMessages });
+
   const [mode, setMode] = useState<PanelMode>('agent-info');
   const [lastA2UIAction, setLastA2UIAction] = useState<string | null>(null);
   const [a2uiActionError, setA2UIActionError] = useState<string | null>(null);
+  
+  // Show chat tab when not on the main chat tab view
+  const showChatTab = activeTab !== 'chat';
 
   const handleA2UIAction = async (event: A2UIActionEvent) => {
     const payload = event.payload ? JSON.stringify(event.payload) : '{}';
@@ -516,63 +1022,6 @@ export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
       setA2UIActionError(String(err));
     }
   };
-
-  const injectTestA2UISurface = useCallback(() => {
-    const surfaceId = `demo-surface-${Date.now()}`;
-
-    pushMessages([
-      {
-        type: 'dataModelUpdate',
-        surfaceId,
-        data: {
-          summary: 'Mission launch console ready. This is a synthetic A2UI payload for frontend verification.',
-          countdownLabel: 'Mission launch (1-minute loop)',
-          secondsElapsed: 24,
-          kpis: [
-            { label: 'Queued', value: '6', delta: '+2', tone: 'warning' },
-            { label: 'In Progress', value: '3', delta: '+1', tone: 'info' },
-            { label: 'Completed', value: '19', delta: '+4', tone: 'success' },
-          ],
-          agenda: [
-            { time: 'Now', title: 'Validate due missions', subtitle: 'Scheduler pass', status: 'Running' },
-            { time: '+1m', title: 'Dispatch ready mission', subtitle: 'Primary agent assignment', status: 'Pending' },
-            { time: '+2m', title: 'Review chain checkpoint', subtitle: 'Auto-review agent', status: 'Pending' },
-          ],
-          actions: [
-            { label: 'Run Due Scan', action: 'run_due_scan', variant: 'primary', payload: { source: 'a2ui-test' } },
-            { label: 'Open Mission Control', action: 'open_mission_control', variant: 'secondary' },
-            { label: 'Escalate Critical', action: 'escalate_critical', variant: 'danger' },
-          ],
-        },
-      },
-      {
-        type: 'surfaceUpdate',
-        surfaceId,
-        components: [
-          { id: 'root', type: 'Column', children: ['header', 'kpis', 'agenda-card', 'actions-card'] },
-          { id: 'header', type: 'Card', props: { title: 'A2UI Test Surface' }, children: ['summary-text', 'launch-progress'] },
-          { id: 'summary-text', type: 'Text', props: { text: '{{summary}}' } },
-          { id: 'launch-progress', type: 'Progress', props: { label: '{{countdownLabel}}', value: '{{secondsElapsed}}', max: 60 } },
-          { id: 'kpis', type: 'KpiGrid', props: { items: '{{kpis}}', columns: 3 } },
-          { id: 'agenda-card', type: 'Card', props: { title: 'Mission Timeline' }, children: ['agenda-list'] },
-          { id: 'agenda-list', type: 'Agenda', props: { items: '{{agenda}}' } },
-          { id: 'actions-card', type: 'Card', props: { title: 'Quick Actions' }, children: ['action-bar'] },
-          { id: 'action-bar', type: 'ActionBar', props: { actions: '{{actions}}' } },
-        ],
-      },
-      {
-        type: 'beginRendering',
-        surfaceId,
-        rootId: 'root',
-        catalog: 'agora-test',
-      },
-    ]);
-
-    setActiveSurfaceId(surfaceId);
-    setLastA2UIAction(`test-surface @ ${surfaceId}`);
-    setA2UIActionError(null);
-    setMode('a2ui');
-  }, [pushMessages, setActiveSurfaceId]);
 
   // Auto-switch to A2UI when a surface is available
   useEffect(() => {
@@ -609,8 +1058,18 @@ export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
     <aside className="w-80 bg-card border-l border-border flex flex-col h-full">
       {/* Header */}
       <div className="p-4 border-b border-border flex items-center justify-between">
-        <h2 className="font-semibold">Context</h2>
         <div className="flex items-center gap-2">
+          {showChatTab && (
+            <button
+              onClick={() => setMode('chat')}
+              className={cn(
+                'px-2 py-1 text-xs rounded transition-colors',
+                mode === 'chat' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              Chat
+            </button>
+          )}
           <button
             onClick={() => setMode('agent-info')}
             className={cn(
@@ -654,8 +1113,13 @@ export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-hidden">
+        {mode === 'chat' && showChatTab && (
+          <ChatPanel />
+        )}
+
         {mode === 'agent-info' && activeAgent && (
+          <div className="h-full overflow-y-auto p-4">
           <div className="space-y-4">
             {/* Agent Card */}
             <div className="text-center">
@@ -728,47 +1192,15 @@ export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
               <UpcomingEvents limit={5} />
             </div>
           </div>
-        )}
-
-        {mode === 'tools' && (
-          <div className="space-y-4">
-            <div className="text-center text-muted-foreground py-4">
-              <div className="text-4xl mb-2">🔧</div>
-              <p className="text-sm">Agent tools & widgets</p>
-            </div>
-
-            {/* Quick tools grid */}
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { icon: '📊', label: 'Charts', desc: 'Data visualization' },
-                { icon: '📝', label: 'Forms', desc: 'Data input' },
-                { icon: '📋', label: 'Missions', desc: 'Kanban board' },
-                { icon: '📁', label: 'Files', desc: 'Documents' },
-                { icon: '🔗', label: 'Links', desc: 'Resources' },
-                { icon: '⏱️', label: 'Timer', desc: 'Pomodoro' },
-              ].map((tool) => (
-                <button
-                  key={tool.label}
-                  className="p-3 rounded-lg bg-muted/50 text-left hover:bg-muted transition-colors group"
-                >
-                  <div className="text-xl mb-1">{tool.icon}</div>
-                  <div className="text-sm font-medium">{tool.label}</div>
-                  <div className="text-xs text-muted-foreground">{tool.desc}</div>
-                </button>
-              ))}
-            </div>
-
-            {/* A2UI Demo */}
-            <div className="border-t border-border pt-4">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
-                A2UI Preview
-              </div>
-              <A2UIDemo />
-            </div>
           </div>
         )}
 
+        {mode === 'tools' && (
+          <ToolsPanel />
+        )}
+
         {mode === 'a2ui' && (
+          <div className="h-full overflow-y-auto p-4">
           <div className="space-y-4">
             {/* A2UI Connection Status */}
             <div className="p-3 rounded-lg bg-muted/50">
@@ -791,13 +1223,6 @@ export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
                   : 'Stream: not available (using gateway events)'} • {surfaces.size} surface(s)
               </p>
             </div>
-
-            <button
-              onClick={injectTestA2UISurface}
-              className="w-full px-3 py-2 rounded-lg bg-amber-500/20 text-amber-300 text-sm font-medium hover:bg-amber-500/30 transition-colors"
-            >
-              Inject Test A2UI Surface
-            </button>
 
             {/* Render active surface */}
             {activeSurface ? (
@@ -848,6 +1273,7 @@ export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
                 ))}
               </div>
             )}
+          </div>
           </div>
         )}
       </div>

@@ -3,12 +3,26 @@ import { useActiveAgent } from '../../stores/agents';
 import { DailyNotesTab } from './DailyNotesTab';
 import { LongTermMemoryTab } from './LongTermMemoryTab';
 import { ProjectContextsTab } from './ProjectContextsTab';
+import { SemanticSearchTab } from './SemanticSearchTab';
+import { LearnedPatternsTab } from './LearnedPatternsTab';
+import { PrioritiesTab } from './PrioritiesTab';
+import { SummariesTab } from './SummariesTab';
 
-type MemoryTab = 'daily' | 'longterm' | 'projects';
+type MemoryTab = 'search' | 'daily' | 'longterm' | 'patterns' | 'priorities' | 'summaries' | 'projects';
+
+const tabs: { key: MemoryTab; label: string }[] = [
+  { key: 'search', label: 'Search' },
+  { key: 'daily', label: 'Daily Notes' },
+  { key: 'longterm', label: 'Long-term' },
+  { key: 'patterns', label: 'Patterns' },
+  { key: 'priorities', label: 'Priorities' },
+  { key: 'summaries', label: 'Summaries' },
+  { key: 'projects', label: 'Contexts' },
+];
 
 export function MemoryViewer() {
   const activeAgent = useActiveAgent();
-  const [activeTab, setActiveTab] = useState<MemoryTab>('daily');
+  const [activeTab, setActiveTab] = useState<MemoryTab>('search');
   const agentId = activeAgent?.id || '';
 
   return (
@@ -27,12 +41,8 @@ export function MemoryViewer() {
         </div>
 
         {/* Tab switcher */}
-        <div className="flex gap-1">
-          {([
-            { key: 'daily', label: 'Daily Notes' },
-            { key: 'longterm', label: 'Long-term' },
-            { key: 'projects', label: 'Contexts' },
-          ] as const).map(({ key, label }) => (
+        <div className="flex flex-wrap gap-1">
+          {tabs.map(({ key, label }) => (
             <button
               key={key}
               onClick={() => setActiveTab(key)}
@@ -50,8 +60,12 @@ export function MemoryViewer() {
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-4">
+        {activeTab === 'search' && <SemanticSearchTab agentId={agentId} />}
         {activeTab === 'daily' && <DailyNotesTab agentId={agentId} />}
         {activeTab === 'longterm' && <LongTermMemoryTab agentId={agentId} />}
+        {activeTab === 'patterns' && <LearnedPatternsTab agentId={agentId} />}
+        {activeTab === 'priorities' && <PrioritiesTab agentId={agentId} />}
+        {activeTab === 'summaries' && <SummariesTab agentId={agentId} />}
         {activeTab === 'projects' && <ProjectContextsTab agentId={agentId} />}
       </div>
     </div>

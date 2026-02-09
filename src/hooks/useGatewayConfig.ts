@@ -1,5 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, createElement } from 'react';
 import { openclawClient, type ConnectionStatus } from '../lib/openclawClient';
+import {
+  AnthropicIcon,
+  OpenAIIcon,
+  GeminiIcon,
+  ZaiIcon,
+  OllamaIcon,
+  DeepSeekIcon,
+  MiniMaxIcon,
+  OpenRouterIcon,
+} from '../components/icons/ProviderIcons';
 
 // ── Provider / Model Catalog ──────────────────────────────────────────
 
@@ -12,7 +22,8 @@ export interface ModelEntry {
 export interface ProviderEntry {
   id: string;
   label: string;
-  icon: string;
+  icon: React.ReactNode;
+  iconText?: string; // Fallback text for select dropdowns (can't render React components)
   note?: string;
   models: ModelEntry[];
   /** Format: how the primary string is built. Default: "provider/model" */
@@ -24,11 +35,35 @@ export interface ProviderEntry {
 export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
-export const MODEL_CATALOG: ProviderEntry[] = [
+// Icon factory functions to avoid JSX in object literals
+function getProviderIcon(providerId: string): React.ReactNode {
+  switch (providerId) {
+    case 'anthropic':
+      return createElement(AnthropicIcon, { className: 'text-orange-400' });
+    case 'openai-codex':
+      return createElement(OpenAIIcon, { className: 'text-green-400' });
+    case 'google':
+      return createElement(GeminiIcon, { className: 'text-blue-400' });
+    case 'ollama':
+      return createElement(OllamaIcon, { className: 'text-zinc-300' });
+    case 'zai':
+      return createElement(ZaiIcon, { className: 'text-purple-400' });
+    case 'deepseek':
+      return createElement(DeepSeekIcon, { className: 'text-cyan-400' });
+    case 'minimax':
+      return createElement(MiniMaxIcon, { className: 'text-indigo-400' });
+    case 'openrouter':
+      return createElement(OpenRouterIcon, { className: 'text-emerald-400' });
+    default:
+      return '⚡';
+  }
+}
+
+const MODEL_CATALOG_DATA: Omit<ProviderEntry, 'icon'>[] = [
   {
     id: 'anthropic',
     label: 'Anthropic',
-    icon: '🟠',
+    iconText: '🅰️',
     models: [
       { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
       { id: 'claude-opus-4-5', label: 'Claude Opus 4.5' },
@@ -40,7 +75,7 @@ export const MODEL_CATALOG: ProviderEntry[] = [
   {
     id: 'openai-codex',
     label: 'OpenAI Codex',
-    icon: '🟢',
+    iconText: '⭘',
     note: 'OAuth auth',
     models: [
       { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
@@ -54,7 +89,7 @@ export const MODEL_CATALOG: ProviderEntry[] = [
   {
     id: 'google',
     label: 'Google Gemini',
-    icon: '🔴',
+    iconText: '✦',
     note: 'API key auth',
     models: [
       { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro Preview' },
@@ -65,14 +100,14 @@ export const MODEL_CATALOG: ProviderEntry[] = [
   {
     id: 'ollama',
     label: 'Ollama',
-    icon: '🦙',
+    iconText: '🦙',
     note: 'Local · Free',
     models: [],
   },
   {
     id: 'zai',
     label: 'Zai',
-    icon: '🔴',
+    iconText: 'Z',
     note: 'Local · Free',
     models: [
       { id: 'glm-4.7', label: 'glm-4.7' },
@@ -82,7 +117,7 @@ export const MODEL_CATALOG: ProviderEntry[] = [
   {
     id: 'deepseek',
     label: 'DeepSeek',
-    icon: '🐳',
+    iconText: '🔷',
     models: [
       { id: 'deepseek-chat', label: 'DeepSeek Chat' },
       { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
@@ -91,7 +126,7 @@ export const MODEL_CATALOG: ProviderEntry[] = [
   {
     id: 'minimax',
     label: 'MiniMax',
-    icon: 'Ⓜ️',
+    iconText: 'Ⓜ️',
     models: [
       { id: 'MiniMax-M2', label: 'MiniMax M2' },
       { id: 'MiniMax-M2.1', label: 'MiniMax M2.1' },
@@ -100,7 +135,7 @@ export const MODEL_CATALOG: ProviderEntry[] = [
   {
     id: 'openrouter',
     label: 'OpenRouter',
-    icon: '🌐',
+    iconText: '⚡',
     format: (model: string) => `openrouter/${model}`,
     parse: (primary: string) => {
       if (!primary.startsWith('openrouter/')) return null;
@@ -115,6 +150,11 @@ export const MODEL_CATALOG: ProviderEntry[] = [
     ],
   },
 ];
+
+export const MODEL_CATALOG: ProviderEntry[] = MODEL_CATALOG_DATA.map(entry => ({
+  ...entry,
+  icon: getProviderIcon(entry.id),
+}));
 
 // ── Skill metadata ────────────────────────────────────────────────────
 
@@ -150,12 +190,24 @@ export const SKILL_CATALOG: Record<string, Omit<SkillMeta, 'id'>> = {
   'session-logs': { label: 'Session Logs', icon: '📋', category: 'System' },
   'skill-creator': { label: 'Skill Creator', icon: '🛠️', category: 'Dev' },
   'agent-orchestrator': { label: 'Orchestrator', icon: '🎭', category: 'System' },
+  'agent-onboarding': { label: 'Agent Onboarding', icon: '🏛️', category: 'System' },
   'mission-control': { label: 'Mission Control', icon: '🚀', category: 'System' },
   'crm-contacts': { label: 'CRM Contacts', icon: '👤', category: 'CRM' },
   'crm-deals': { label: 'CRM Deals', icon: '💼', category: 'CRM' },
   'crm-products': { label: 'Products', icon: '📦', category: 'CRM' },
   'crm-orders': { label: 'Orders', icon: '🧾', category: 'CRM' },
   'crm-projects': { label: 'Projects', icon: '📂', category: 'CRM' },
+  'exec': { label: 'Shell Exec', icon: '⚡', category: 'System' },
+  'nodes': { label: 'Nodes', icon: '🔗', category: 'Dev' },
+  'supabase': { label: 'Supabase', icon: '🗄️', category: 'Dev' },
+  'web_fetch': { label: 'Web Fetch', icon: '🌐', category: 'Info' },
+  'web_search': { label: 'Web Search', icon: '🔍', category: 'Info' },
+  'discord': { label: 'Discord', icon: '🎮', category: 'Comms' },
+  'whatsapp': { label: 'WhatsApp (Skill)', icon: '📱', category: 'Comms' },
+  'healthcheck': { label: 'Healthcheck', icon: '🩺', category: 'System' },
+  'mission-authoring-playbook': { label: 'Mission Authoring', icon: '📖', category: 'System' },
+  'team-management': { label: 'Team Management', icon: '👥', category: 'System' },
+  'company-bootstrap': { label: 'Company Bootstrap', icon: '🏢', category: 'System' },
 };
 
 // ── Parse primary string into provider + model ───────────────────────

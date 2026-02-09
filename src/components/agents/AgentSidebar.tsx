@@ -5,6 +5,7 @@ import { SubAgentPanel } from './SubAgentPanel';
 import { HireAgentButton } from './HireAgentButton';
 import { LevelBadge } from './LevelBadge';
 import { useAgentLevel } from '../../hooks/useAgentLevel';
+import { useMissionControlStore } from '../../stores/missionControl';
 import { cn } from '../../lib/utils';
 import type { AgentLifecycleStatus } from '../../types/supabase';
 
@@ -77,6 +78,46 @@ function AgentItem({ agent, isActive, isConnected, level, lifecycleStatus, onCli
   );
 }
 
+/* Compact icon-only agent item for collapsed sidebar */
+function AgentItemCollapsed({ agent, isActive, isConnected, onClick }: {
+  agent: Agent;
+  isActive: boolean;
+  isConnected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'relative w-9 h-9 rounded-full flex items-center justify-center transition-colors mx-auto',
+        isActive
+          ? 'ring-2 ring-primary ring-offset-1 ring-offset-background'
+          : 'hover:bg-muted'
+      )}
+      title={agent.name}
+    >
+      <img
+        src={agent.avatar}
+        alt={agent.name}
+        className="w-8 h-8 rounded-full object-cover"
+        onError={(e) => {
+          e.currentTarget.style.display = 'none';
+          e.currentTarget.nextElementSibling?.classList.remove('hidden');
+        }}
+      />
+      <span className="hidden w-8 h-8 rounded-full bg-muted flex items-center justify-center text-base">
+        {agent.emoji}
+      </span>
+      <span
+        className={cn(
+          'absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-background',
+          isConnected ? 'bg-green-500' : 'bg-zinc-500'
+        )}
+      />
+    </button>
+  );
+}
+
 interface TeamSectionProps {
   team: Team;
   activeAgentId: string;
@@ -90,6 +131,38 @@ interface TeamSectionProps {
 }
 
 function TeamSection({ team, activeAgentId, isConnected, agentLevelMap, lifecycleMap, onAgentSelect, onProfileClick, isCollapsed, onToggleCollapse }: TeamSectionProps) {
+  // State for collapsed sub-teams (keyed by parentAgentId)
+  const [collapsedSubTeams, setCollapsedSubTeams] = useState<Set<string>>(new Set());
+
+  const toggleSubTeam = (parentId: string) => {
+    setCollapsedSubTeams(prev => {
+      const next = new Set(prev);
+      if (next.has(parentId)) {
+        next.delete(parentId);
+      } else {
+        next.add(parentId);
+      }
+      return next;
+    });
+  };
+
+  // Separate top-level agents from sub-team agents
+  const topLevelAgents = team.agents.filter(a => !a.parentAgentId);
+  const subAgentsByParent = new Map<string, { label: string; agents: Agent[] }>();
+  for (const agent of team.agents) {
+    if (agent.parentAgentId && agent.subTeamLabel) {
+      const existing = subAgentsByParent.get(agent.parentAgentId);
+      if (existing) {
+        existing.agents.push(agent);
+      } else {
+        subAgentsByParent.set(agent.parentAgentId, {
+          label: agent.subTeamLabel,
+          agents: [agent],
+        });
+      }
+    }
+  }
+
   return (
     <div className="space-y-1">
       <button
@@ -115,18 +188,61 @@ function TeamSection({ team, activeAgentId, isConnected, agentLevelMap, lifecycl
       </button>
       {!isCollapsed && (
         <div className="space-y-1">
-          {team.agents.map((agent) => (
-            <AgentItem
-              key={agent.id}
-              agent={agent}
-              isActive={agent.id === activeAgentId}
-              isConnected={isConnected}
-              level={agentLevelMap[agent.id]}
-              lifecycleStatus={lifecycleMap[agent.id]}
-              onClick={() => onAgentSelect(agent.id)}
-              onProfileClick={() => onProfileClick(agent.id)}
-            />
-          ))}
+          {topLevelAgents.map((agent) => {
+            const subTeam = subAgentsByParent.get(agent.id);
+            return (
+              <div key={agent.id}>
+                <AgentItem
+                  agent={agent}
+                  isActive={agent.id === activeAgentId}
+                  isConnected={isConnected}
+                  level={agentLevelMap[agent.id]}
+                  lifecycleStatus={lifecycleMap[agent.id]}
+                  onClick={() => onAgentSelect(agent.id)}
+                  onProfileClick={() => onProfileClick(agent.id)}
+                />
+                {/* Sub-team under this parent */}
+                {subTeam && (
+                  <div className="ml-5 mt-1 mb-1 border-l border-border/50 pl-2">
+                    <button
+                      onClick={() => toggleSubTeam(agent.id)}
+                      className="w-full flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors rounded text-left"
+                    >
+                      <svg
+                        className={cn(
+                          'w-3 h-3 transition-transform',
+                          collapsedSubTeams.has(agent.id) ? '-rotate-90' : 'rotate-0'
+                        )}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                      {subTeam.label}
+                      <span className="opacity-50">{subTeam.agents.length}</span>
+                    </button>
+                    {!collapsedSubTeams.has(agent.id) && (
+                      <div className="space-y-0.5 mt-0.5">
+                        {subTeam.agents.map((subAgent) => (
+                          <AgentItem
+                            key={subAgent.id}
+                            agent={subAgent}
+                            isActive={subAgent.id === activeAgentId}
+                            isConnected={isConnected}
+                            level={agentLevelMap[subAgent.id]}
+                            lifecycleStatus={lifecycleMap[subAgent.id]}
+                            onClick={() => onAgentSelect(subAgent.id)}
+                            onProfileClick={() => onProfileClick(subAgent.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -138,12 +254,23 @@ interface AgentSidebarProps {
 }
 
 export function AgentSidebar({ onSettingsClick }: AgentSidebarProps) {
-  const { teams, activeAgentId, setActiveAgent, isConnected, agentProfiles, openHiringWizard, setSelectedProfileAgentId } = useAgentStore();
+  const teams = useAgentStore((s) => s.teams);
+  const activeAgentId = useAgentStore((s) => s.activeAgentId);
+  const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
+  const isConnected = useAgentStore((s) => s.isConnected);
+  const agentProfiles = useAgentStore((s) => s.agentProfiles);
+  const openHiringWizard = useAgentStore((s) => s.openHiringWizard);
+  const setSelectedProfileAgentId = useAgentStore((s) => s.setSelectedProfileAgentId);
   const { spawnSubAgent, onSubAgentRunEvent } = useOpenClaw();
   const { agentLevels } = useAgentLevel();
+  const connectionQuality = useMissionControlStore((s) => s.connectionQuality);
+  const reconnecting = useMissionControlStore((s) => s.reconnecting);
   const activeAgent = useActiveAgent();
   const activeTeamId = teams.find((team) => team.agents.some((agent) => agent.id === activeAgentId))?.id;
   const routeTeams = teams;
+
+  // Effective connection: must be connected AND quality not lost
+  const effectiveConnected = isConnected && connectionQuality !== 'lost' && !reconnecting;
 
   // Build a simple map of agentId -> level for passing to TeamSection
   const agentLevelMap: Record<string, 1 | 2 | 3 | 4> = {};
@@ -157,8 +284,9 @@ export function AgentSidebar({ onSettingsClick }: AgentSidebarProps) {
     lifecycleMap[id] = profile.lifecycleStatus;
   }
 
-  // State for collapsed teams
+  // State for collapsed teams and sidebar collapsed
   const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(new Set());
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const toggleTeamCollapse = (teamId: string) => {
     setCollapsedTeams(prev => {
@@ -172,6 +300,90 @@ export function AgentSidebar({ onSettingsClick }: AgentSidebarProps) {
     });
   };
 
+  // Connection status dot color
+  const connectionDotColor = effectiveConnected
+    ? 'bg-green-500'
+    : reconnecting || connectionQuality === 'degraded'
+    ? 'bg-yellow-500 animate-pulse'
+    : 'bg-red-500';
+
+  // ─── Collapsed sidebar: icon-only rail ───
+  if (sidebarCollapsed) {
+    return (
+      <aside className="w-14 bg-card border-r border-border flex flex-col h-full items-center py-3">
+        {/* Agora icon + connection dot */}
+        <div className="relative mb-3">
+          <img
+            src="/agora-icon.png"
+            alt="Agora"
+            className="w-8 h-8 rounded-lg"
+          />
+          <span className={cn('absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-background', connectionDotColor)} />
+        </div>
+
+        {/* Divider */}
+        <div className="w-6 border-t border-border mb-1" />
+
+        {/* Agent icons grouped by team — scrollable */}
+        <div className="flex-1 overflow-y-auto w-full flex flex-col items-center gap-0.5 px-1 py-1">
+          {teams.map((team, teamIdx) => (
+            <div key={team.id} className="flex flex-col items-center w-full">
+              {/* Team emoji header */}
+              <div
+                className={cn(
+                  'text-sm py-1 cursor-default select-none',
+                  teamIdx > 0 && 'mt-2 pt-2 border-t border-border/50 w-6'
+                )}
+                title={team.name}
+              >
+                <span className="block text-center">{team.emoji}</span>
+              </div>
+              {/* Team agents */}
+              <div className="flex flex-col items-center gap-1.5 mt-1">
+                {team.agents.map((agent) => (
+                  <AgentItemCollapsed
+                    key={agent.id}
+                    agent={agent}
+                    isActive={agent.id === activeAgentId}
+                    isConnected={effectiveConnected}
+                    onClick={() => setActiveAgent(agent.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Bottom actions */}
+        <div className="flex flex-col items-center gap-2 mt-2">
+          {/* Settings */}
+          <button
+            onClick={onSettingsClick}
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            title="Settings (⌘,)"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+
+          {/* Expand toggle */}
+          <button
+            onClick={() => setSidebarCollapsed(false)}
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            title="Expand sidebar"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      </aside>
+    );
+  }
+
+  // ─── Expanded sidebar (default) ───
   return (
     <aside className="w-72 bg-card border-r border-border flex flex-col h-full">
       {/* Header */}
@@ -185,13 +397,14 @@ export function AgentSidebar({ onSettingsClick }: AgentSidebarProps) {
           <div className="flex-1">
             <h1 className="font-bold text-lg">Agora</h1>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span
-                className={cn(
-                  'w-2 h-2 rounded-full',
-                  isConnected ? 'bg-green-500' : 'bg-red-500'
-                )}
-              />
-              {isConnected ? 'Connected' : 'Disconnected'}
+              <span className={cn('w-2 h-2 rounded-full', connectionDotColor)} />
+              {effectiveConnected
+                ? 'Connected'
+                : reconnecting
+                ? 'Reconnecting...'
+                : connectionQuality === 'degraded'
+                ? 'Degraded'
+                : 'Disconnected'}
             </div>
           </div>
           {/* Settings Button */}
@@ -203,6 +416,16 @@ export function AgentSidebar({ onSettingsClick }: AgentSidebarProps) {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+          {/* Collapse toggle */}
+          <button
+            onClick={() => setSidebarCollapsed(true)}
+            className="p-2 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            title="Collapse sidebar"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7M19 19l-7-7 7-7" />
             </svg>
           </button>
         </div>
@@ -243,7 +466,7 @@ export function AgentSidebar({ onSettingsClick }: AgentSidebarProps) {
             key={team.id}
             team={team}
             activeAgentId={activeAgentId}
-            isConnected={isConnected}
+            isConnected={effectiveConnected}
             agentLevelMap={agentLevelMap}
             lifecycleMap={lifecycleMap}
             onAgentSelect={setActiveAgent}

@@ -94,6 +94,15 @@ export const AGENTS: AgentDef[] = [
   { id: 'spartacus', name: 'Spartacus', role: 'HR', emoji: '✊', team: 'business' },
   { id: 'achilles', name: 'Achilles', role: 'CTO', emoji: '🔥', team: 'business' },
   { id: 'alexander', name: 'Alexander', role: 'Marketing', emoji: '🦁', team: 'business' },
+  // Dev Team (under Achilles / CTO)
+  { id: 'heracles', name: 'Heracles', role: 'Senior Fullstack Dev', emoji: '💪', team: 'business' },
+  { id: 'daedalus', name: 'Daedalus', role: 'Backend Engineer', emoji: '🏗️', team: 'business' },
+  { id: 'icarus', name: 'Icarus', role: 'Frontend Engineer', emoji: '🪽', team: 'business' },
+  { id: 'ajax', name: 'Ajax', role: 'DevOps & Infrastructure', emoji: '🛡️', team: 'business' },
+  // Marketing Team (under Alexander / Marketing Head)
+  { id: 'cleopatra', name: 'Cleopatra', role: 'Content Strategist', emoji: '👑', team: 'business' },
+  { id: 'homer', name: 'Homer', role: 'Copywriter & Brand Voice', emoji: '📜', team: 'business' },
+  { id: 'hermes', name: 'Hermes', role: 'Social & Distribution', emoji: '🪶', team: 'business' },
   { id: 'athena', name: 'Athena', role: 'Security Architect', emoji: '🦉', team: 'engineering' },
   { id: 'hephaestus', name: 'Hephaestus', role: 'Lead Developer', emoji: '🔨', team: 'engineering' },
   { id: 'prometheus', name: 'Prometheus', role: 'Innovation Lead', emoji: '💡', team: 'engineering' },

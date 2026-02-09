@@ -4,9 +4,12 @@ import { DependencyDag } from './DependencyDag';
 import { MissionDashboard } from './MissionDashboard';
 import { MissionFlowDiagram } from './MissionFlowDiagram';
 import { CreateMissionModal } from './CreateMissionModal';
+import { LaunchOperationWizard } from './LaunchOperationWizard';
 import { MissionStatementModal } from './MissionStatementModal';
 import { PlanningCenterModal } from './PlanningCenterModal';
 import { ActivityFeed } from './ActivityFeed';
+import { ThinkingStream } from './ThinkingStream';
+import { MissionApprovalPanel } from './MissionApprovalPanel';
 import { PermissionOverridePanel } from '../agents/PermissionOverridePanel';
 import { useMissionControl } from '../../hooks/useMissionControl';
 import { useMissionControlStore } from '../../stores/missionControl';
@@ -80,12 +83,73 @@ function ConnectionBanner() {
   );
 }
 
+function StuckMissionsAlert() {
+  const tasks = useMissionControlStore((s) => s.tasks);
+  const missions = useMissionControlStore((s) => s.missions);
+  const { moveMission } = useMissionControl();
+  const [isForcing, setIsForcing] = useState<string | null>(null);
+
+  // Find missions that appear stuck (ready/blocked for >2 min with no active run)
+  const now = Date.now();
+  const stuckMissions = useMemo(() => {
+    return missions.filter((mission) => {
+      const runtimeStatus = mission.mission_status || mission.status;
+      if (runtimeStatus !== 'assigned' && runtimeStatus !== 'scheduled' && runtimeStatus !== 'revision') {
+        return false;
+      }
+      // Check if mission has any tasks that should be running but aren't
+      const missionTasks = tasks.filter((t) => (t.root_task_id || t.id) === mission.id);
+      const pendingTasks = missionTasks.filter((t) => 
+        (t.status === 'todo' || t.status === 'blocked') && 
+        !t.active_run_id &&
+        Date.parse(t.updated_at) < now - 120_000 // Stuck for 2+ minutes
+      );
+      return pendingTasks.length > 0;
+    }).slice(0, 3); // Show max 3
+  }, [missions, tasks, now]);
+
+  if (stuckMissions.length === 0) return null;
+
+  const handleForceStart = async (missionId: string) => {
+    setIsForcing(missionId);
+    try {
+      await moveMission(missionId, 'in_progress');
+    } finally {
+      setIsForcing(null);
+    }
+  };
+
+  return (
+    <div className="px-4 py-2 border-b border-amber-500/30 bg-amber-500/10">
+      <div className="flex items-center gap-2 text-sm">
+        <span className="w-2 h-2 rounded-full bg-amber-400" />
+        <span className="text-amber-300 font-medium">
+          {stuckMissions.length} mission{stuckMissions.length > 1 ? 's' : ''} may be stuck
+        </span>
+        <div className="flex items-center gap-2 ml-auto">
+          {stuckMissions.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => handleForceStart(m.id)}
+              disabled={isForcing === m.id}
+              className="px-2 py-1 text-xs bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded hover:bg-amber-500/30 disabled:opacity-50"
+            >
+              {isForcing === m.id ? 'Starting...' : `Force start: ${m.title.slice(0, 20)}${m.title.length > 20 ? '...' : ''}`}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MissionControlTab() {
   const { isConfigured } = useMissionControl();
-  const { setCreateModalOpen, filter, setFilter, requestSchedulerTick, realtimeLastEvent, realtimeStatus, missions } = useMissionControlStore();
+  const { setCreateModalOpen, setOperationWizardOpen, filter, setFilter, requestSchedulerTick, realtimeLastEvent, realtimeStatus, missions } = useMissionControlStore();
   const [statementModalOpen, setStatementModalOpen] = useState(false);
   const [planningCenterOpen, setPlanningCenterOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(true);
+  const [thinkingOpen, setThinkingOpen] = useState(true);
   const [viewMode, setViewMode] = useState<'board' | 'dependencies' | 'dashboard' | 'flow'>('board');
   const planningQueueCount = useMemo(() => missions.filter((mission) => {
     const phase = mission.mission_phase || 'tasks';
@@ -175,6 +239,14 @@ export function MissionControlTab() {
             {activityOpen ? '👁️' : '🙈'}
           </button>
           <button
+            onClick={() => setOperationWizardOpen(true)}
+            className="px-3 py-2 bg-zinc-800 border border-amber-500/50 text-amber-300 text-sm font-medium rounded-lg hover:bg-amber-500/10 hover:border-amber-500 transition-colors flex items-center gap-1.5"
+            title="Launch Operation (⌘⇧N)"
+            aria-label="Launch Operation"
+          >
+            🚀 Launch
+          </button>
+          <button
             onClick={() => setCreateModalOpen(true)}
             className="p-2 bg-amber-500 text-black text-sm font-medium rounded-lg hover:bg-amber-400 transition-colors"
             title="New mission"
@@ -187,6 +259,12 @@ export function MissionControlTab() {
 
       {/* Connection banner */}
       <ConnectionBanner />
+
+      {/* Mission approval requests */}
+      <MissionApprovalPanel />
+
+      {/* Stuck missions alert */}
+      <StuckMissionsAlert />
 
       {/* Pending level transition approvals */}
       <PermissionOverridePanel />
@@ -203,7 +281,7 @@ export function MissionControlTab() {
 
         {/* Activity sidebar */}
         {activityOpen && (
-          <div className="w-72 border-l border-zinc-800 flex flex-col">
+          <div className="w-80 border-l border-zinc-800 flex flex-col">
             <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-zinc-400">Activity</h2>
               <button
@@ -214,15 +292,37 @@ export function MissionControlTab() {
                 Hide
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto border-b border-zinc-800">
               <ActivityFeed limit={20} />
+            </div>
+
+            {/* Thinking Stream - Live agent reasoning */}
+            <div className="flex-none max-h-64 flex flex-col">
+              <div className="px-4 py-2 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50">
+                <h2 className="text-sm font-semibold text-amber-400/80 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  Live Thinking
+                </h2>
+                <button
+                  onClick={() => setThinkingOpen((v) => !v)}
+                  className="text-xs text-zinc-500 hover:text-zinc-300"
+                >
+                  {thinkingOpen ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              {thinkingOpen && (
+                <div className="flex-1 overflow-y-auto">
+                  <ThinkingStream />
+                </div>
+              )}
             </div>
           </div>
         )}
       </div>
 
-      {/* Create mission modal */}
+      {/* Modals */}
       <CreateMissionModal />
+      <LaunchOperationWizard />
       <MissionStatementModal isOpen={statementModalOpen} onClose={() => setStatementModalOpen(false)} />
       <PlanningCenterModal isOpen={planningCenterOpen} onClose={() => setPlanningCenterOpen(false)} />
     </div>

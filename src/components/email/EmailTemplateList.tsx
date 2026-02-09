@@ -8,7 +8,6 @@ export function EmailTemplateList() {
   const templates = useEmailStore((s) => s.templates);
   const { deleteTemplate } = useEmail();
   const [filter, setFilter] = useState<EmailCategory | 'all'>('all');
-  const [editId, setEditId] = useState<string | null>(null);
 
   const filtered = filter === 'all'
     ? templates
@@ -79,12 +78,6 @@ export function EmailTemplateList() {
                 </div>
               )}
               <div className="flex gap-2 mt-2">
-                <button
-                  onClick={() => setEditId(template.id)}
-                  className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
-                >
-                  Edit
-                </button>
                 <button
                   onClick={() => deleteTemplate(template.id)}
                   className="text-[10px] text-red-500 hover:text-red-400 transition-colors"

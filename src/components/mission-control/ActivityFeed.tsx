@@ -35,6 +35,7 @@ const activityIcons: Record<string, string> = {
   mission_failed: '💥',
   review_redo_requested: '🔄',
   task_blocked: '⛔',
+  thinking_progress: '💭',
   // Context & Memory system
   handoff_requested: '🤝',
   handoff_completed: '✅',

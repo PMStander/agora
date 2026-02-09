@@ -16,11 +16,22 @@ interface MissionControlState {
   reconnecting: boolean;
   runCheckpoints: Record<string, RunCheckpoint>;
 
+  // Approval system state
+  pendingApprovals: Array<{
+    taskId: string;
+    missionId: string;
+    agentId: string;
+    agentLevel: number;
+    reason: string;
+    requestedAt: string;
+  }>;
+
   // UI State
   selectedMissionId: string | null;
   selectedTaskId: string | null;
   isCreateModalOpen: boolean;
-  activeTab: 'chat' | 'mission-control' | 'crm' | 'products' | 'projects' | 'reports' | 'reviews' | 'context' | 'automation' | 'invoicing' | 'calendar';
+  isOperationWizardOpen: boolean;
+  activeTab: 'chat' | 'mission-control' | 'crm' | 'products' | 'projects' | 'reports' | 'reviews' | 'context' | 'automation' | 'invoicing' | 'calendar' | 'teams';
   schedulerLastTickAt: string | null;
   schedulerNextTickAt: string | null;
   schedulerForceTickVersion: number;
@@ -64,12 +75,24 @@ interface MissionControlState {
   selectMission: (missionId: string | null) => void;
   selectTask: (taskId: string | null) => void;
   setCreateModalOpen: (open: boolean) => void;
+  setOperationWizardOpen: (open: boolean) => void;
   setActiveTab: (tab: MissionControlState['activeTab']) => void;
   setSchedulerTick: (lastTickAt: string, nextTickAt: string) => void;
   requestSchedulerTick: () => void;
   setRealtimeLastEvent: (event: string | null) => void;
   setRealtimeStatus: (status: string | null) => void;
   setFilter: (filter: Partial<MissionControlState['filter']>) => void;
+
+  // ─── Approval System Actions ──────────────────────────────
+  requestApproval: (approval: {
+    taskId: string;
+    missionId: string;
+    agentId: string;
+    agentLevel: number;
+    reason: string;
+  }) => void;
+  approveMission: (taskId: string) => void;
+  rejectApproval: (taskId: string) => void;
 }
 
 const MISSION_CONTROL_STORAGE_KEY = 'agora-mission-control-v2';
@@ -87,10 +110,14 @@ export const useMissionControlStore = create<MissionControlState>()(persist((set
   reconnecting: false,
   runCheckpoints: {},
 
+  // Approval system state
+  pendingApprovals: [],
+
   // Initial UI state
   selectedMissionId: null,
   selectedTaskId: null,
   isCreateModalOpen: false,
+  isOperationWizardOpen: false,
   activeTab: 'chat',
   schedulerLastTickAt: null,
   schedulerNextTickAt: null,
@@ -189,6 +216,7 @@ export const useMissionControlStore = create<MissionControlState>()(persist((set
   selectMission: (missionId) => set({ selectedMissionId: missionId }),
   selectTask: (taskId) => set({ selectedTaskId: taskId }),
   setCreateModalOpen: (open) => set({ isCreateModalOpen: open }),
+  setOperationWizardOpen: (open) => set({ isOperationWizardOpen: open }),
   setActiveTab: (tab) => set({ activeTab: tab }),
   setSchedulerTick: (lastTickAt, nextTickAt) =>
     set({ schedulerLastTickAt: lastTickAt, schedulerNextTickAt: nextTickAt }),
@@ -198,6 +226,26 @@ export const useMissionControlStore = create<MissionControlState>()(persist((set
   setRealtimeStatus: (status) => set({ realtimeStatus: status }),
   setFilter: (filter) =>
     set((state) => ({ filter: { ...state.filter, ...filter } })),
+
+  // Approval system actions
+  requestApproval: (approval: {
+    taskId: string;
+    missionId: string;
+    agentId: string;
+    agentLevel: number;
+    reason: string;
+  }) =>
+    set((state) => ({
+      pendingApprovals: [...state.pendingApprovals, { ...approval, requestedAt: new Date().toISOString() }],
+    })),
+  approveMission: (taskId: string) =>
+    set((state) => ({
+      pendingApprovals: state.pendingApprovals.filter((a) => a.taskId !== taskId),
+    })),
+  rejectApproval: (taskId: string) =>
+    set((state) => ({
+      pendingApprovals: state.pendingApprovals.filter((a) => a.taskId !== taskId),
+    })),
 }), {
   name: MISSION_CONTROL_STORAGE_KEY,
   storage: createJSONStorage(() => localStorage),

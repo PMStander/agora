@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useEmail } from '../../hooks/useEmail';
 import { useEmailStore } from '../../stores/email';
-import type { EmailCategory, EmailTemplate } from '../../types/email';
+import type { EmailCategory } from '../../types/email';
 
 interface EmailTemplateEditorProps {
   isOpen: boolean;

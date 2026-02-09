@@ -95,7 +95,7 @@ WHERE lifecycle_status IS NULL OR lifecycle_status = 'active';
 
 CREATE TABLE IF NOT EXISTS agent_soul_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
   version INTEGER NOT NULL,
   soul JSONB NOT NULL,
   changed_by TEXT DEFAULT 'user',

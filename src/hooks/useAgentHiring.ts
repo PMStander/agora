@@ -7,7 +7,9 @@ import type { AgentFull, AgentLifecycleStatus, SoulProfile } from '../types/supa
  * Hook wrapping the hiring wizard store with Supabase CRUD operations.
  */
 export function useAgentHiring() {
-  const { addAgent, updateAgentSoul, setAgentLifecycleStatus } = useAgentStore();
+  const addAgent = useAgentStore((s) => s.addAgent);
+  const updateAgentSoul = useAgentStore((s) => s.updateAgentSoul);
+  const setAgentLifecycleStatus = useAgentStore((s) => s.setAgentLifecycleStatus);
 
   const createAgent = useCallback(async (agent: AgentFull) => {
     // Insert into Supabase agents table
@@ -102,7 +104,7 @@ export function useAgentHiring() {
 
   const listAgentsByStatus = useCallback((status: AgentLifecycleStatus): AgentFull[] => {
     const profiles = useAgentStore.getState().agentProfiles;
-    return Object.values(profiles).filter((a) => a.lifecycleStatus === status);
+    return (Object.values(profiles) as AgentFull[]).filter((a) => a.lifecycleStatus === status);
   }, []);
 
   return {

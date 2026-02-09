@@ -29,8 +29,8 @@ const APP_VERSION = '0.1.0';
 
 // Reconnection constants
 const RECONNECT_BASE_MS = 1000;
-const RECONNECT_MAX_MS = 30_000;
-const RECONNECT_MAX_ATTEMPTS = 10;
+const RECONNECT_MAX_MS = 60_000; // Increased to 60s max backoff
+const RECONNECT_MAX_ATTEMPTS = Infinity; // Infinite retries with backoff (configurable)
 
 // Heartbeat constants
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -82,9 +82,11 @@ class OpenClawClient {
   private _error: string | null = null;
   private _helloPayload: Record<string, unknown> | null = null;
   private connectPromise: Promise<void> | null = null;
+  private connectPromiseReject: ((reason: Error) => void) | null = null;
 
   // Reconnection state
   private _reconnectAttempt = 0;
+  private maxReconnectAttempts = RECONNECT_MAX_ATTEMPTS;
 
   // Heartbeat state
   private _heartbeatInterval: ReturnType<typeof setInterval> | null = null;
@@ -161,32 +163,40 @@ class OpenClawClient {
     this._heartbeatInterval = setInterval(() => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
-      // Send a lightweight ping request
+      // Send a lightweight status request as heartbeat.
+      // We use 'status' because the gateway supports it natively.
+      // Any response (success OR error) proves the connection is alive.
       const id = this.nextId();
-      this.ws.send(JSON.stringify({ type: 'req', id, method: 'ping', params: {} }));
+      this.ws.send(JSON.stringify({ type: 'req', id, method: 'status', params: {} }));
 
       this._heartbeatTimeout = setTimeout(() => {
-        // No pong within timeout -- mark degraded
+        // No response at all within timeout -- mark degraded
         this.setQuality('degraded');
 
-        // If degraded for too long, mark lost and trigger stale recovery
+        // If degraded for too long, force-close the zombie connection.
+        // The TCP socket can stay open while the proxy silently drops frames.
+        // Closing triggers onclose → auto-reconnect with a fresh connection.
         if (this._degradedSince && Date.now() - this._degradedSince >= DEGRADED_THRESHOLD_MS) {
           this.setQuality('lost');
+          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            console.warn('[OpenClaw] Heartbeat lost for too long — forcing reconnect');
+            this.ws.close(4000, 'Heartbeat timeout');
+          }
         }
       }, HEARTBEAT_PONG_TIMEOUT_MS);
 
-      // Listen for the pong response
+      // Any response (resolve or reject) means the gateway is alive
+      const clearHeartbeatTimeout = () => {
+        if (this._heartbeatTimeout) {
+          clearTimeout(this._heartbeatTimeout);
+          this._heartbeatTimeout = null;
+        }
+        this.setQuality('good');
+      };
+
       this.pendingRequests.set(id, {
-        resolve: () => {
-          if (this._heartbeatTimeout) {
-            clearTimeout(this._heartbeatTimeout);
-            this._heartbeatTimeout = null;
-          }
-          this.setQuality('good');
-        },
-        reject: () => {
-          // Pong failed -- already handled by timeout above
-        },
+        resolve: clearHeartbeatTimeout,
+        reject: clearHeartbeatTimeout,
       });
     }, HEARTBEAT_INTERVAL_MS);
   }
@@ -217,10 +227,28 @@ class OpenClawClient {
       return Promise.resolve();
     }
 
+    // Cancel any dangling connection attempt
+    if (this.connectPromiseReject) {
+      this.connectPromiseReject(new Error('Connection attempt cancelled - new attempt initiated'));
+      this.connectPromiseReject = null;
+    }
+
+    // Close existing WebSocket if present
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch (e) {
+        // Ignore close errors
+      }
+      this.ws = null;
+    }
+
     console.log('[OpenClaw] Connecting to', GATEWAY_URL);
     this.setStatus('connecting');
 
     this.connectPromise = new Promise<void>((resolve, reject) => {
+      // Store reject for cancellation
+      this.connectPromiseReject = reject;
       try {
         this.ws = new WebSocket(GATEWAY_URL);
 
@@ -229,6 +257,7 @@ class OpenClawClient {
           this.ws?.close();
           this.setStatus('error', 'Connection timeout');
           this.connectPromise = null;
+          this.connectPromiseReject = null;
           reject(new Error('Connection timeout'));
         }, 10000);
 
@@ -265,6 +294,7 @@ class OpenClawClient {
                   this.setQuality('good');
                   this.startHeartbeat();
                   this.connectPromise = null;
+                  this.connectPromiseReject = null;
                   resolve();
                 },
                 reject: (err) => {
@@ -272,6 +302,7 @@ class OpenClawClient {
                   clearTimeout(connectTimeout);
                   this.setStatus('error', 'Handshake failed');
                   this.connectPromise = null;
+                  this.connectPromiseReject = null;
                   reject(err);
                 }
               });
@@ -328,6 +359,7 @@ class OpenClawClient {
           clearTimeout(connectTimeout);
           this.setStatus('error', 'Connection failed');
           this.connectPromise = null;
+          this.connectPromiseReject = null;
           reject(error);
         };
 
@@ -342,6 +374,7 @@ class OpenClawClient {
           this._helloPayload = null;
           this.ws = null;
           this.connectPromise = null;
+          this.connectPromiseReject = null;
 
           // Reject any pending requests
           this.pendingRequests.forEach((pending, id) => {
@@ -350,7 +383,8 @@ class OpenClawClient {
           });
 
           // Auto-reconnect with exponential backoff + jitter
-          if (wasConnected && this._reconnectAttempt < RECONNECT_MAX_ATTEMPTS) {
+          // Always retry, not just when wasConnected
+          if (this._reconnectAttempt < this.maxReconnectAttempts) {
             const base = Math.min(
               RECONNECT_BASE_MS * Math.pow(2, this._reconnectAttempt),
               RECONNECT_MAX_MS,
@@ -359,17 +393,28 @@ class OpenClawClient {
             const jitter = Math.floor(Math.random() * base * 0.5);
             const delay = base + jitter;
             this._reconnectAttempt += 1;
-            console.log(`[OpenClaw] Reconnect attempt ${this._reconnectAttempt}/${RECONNECT_MAX_ATTEMPTS} in ${delay}ms`);
+            
+            const attemptsDisplay = this.maxReconnectAttempts === Infinity 
+              ? `${this._reconnectAttempt}` 
+              : `${this._reconnectAttempt}/${this.maxReconnectAttempts}`;
+            console.log(`[OpenClaw] Reconnect attempt ${attemptsDisplay} in ${delay}ms`);
+            
             this.reconnectTimeout = setTimeout(() => {
               this.connect()
                 .then(() => {
                   // Successful reconnection -- reset attempts and notify listeners
                   this._reconnectAttempt = 0;
-                  this.reconnectHandlers.forEach(h => h());
+                  if (wasConnected) {
+                    // Only notify reconnect handlers if we were previously connected
+                    this.reconnectHandlers.forEach(h => h());
+                  }
                 })
-                .catch(console.error);
+                .catch((err) => {
+                  console.error('[OpenClaw] Reconnect failed:', err);
+                  // Error will be logged, next retry scheduled by onclose
+                });
             }, delay);
-          } else if (this._reconnectAttempt >= RECONNECT_MAX_ATTEMPTS) {
+          } else {
             console.error('[OpenClaw] Max reconnect attempts reached');
             this.setStatus('error', 'Max reconnect attempts reached');
           }
@@ -378,11 +423,20 @@ class OpenClawClient {
         console.error('[OpenClaw] Failed to create WebSocket:', err);
         this.setStatus('error', 'Failed to connect');
         this.connectPromise = null;
+        this.connectPromiseReject = null;
         reject(err);
       }
     });
 
     return this.connectPromise;
+  }
+
+  /**
+   * Configure maximum reconnection attempts
+   * @param maxAttempts - Maximum number of reconnection attempts (use Infinity for unlimited)
+   */
+  setMaxReconnectAttempts(maxAttempts: number) {
+    this.maxReconnectAttempts = maxAttempts;
   }
 
   async send(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
@@ -415,28 +469,65 @@ class OpenClawClient {
     this._reconnectAttempt = 0;
   }
 
+  /**
+   * Disconnect and stop all reconnection attempts
+   */
   disconnect() {
+    console.log('[OpenClaw] Disconnecting...');
+    
+    // Clear any pending reconnection timeout
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
-    this.stopHeartbeat();
-    this._reconnectAttempt = 0;
+
+    // Cancel any pending connect promise
+    if (this.connectPromiseReject) {
+      this.connectPromiseReject(new Error('Disconnected by user'));
+      this.connectPromiseReject = null;
+    }
+
+    // Set max attempts to 0 to prevent auto-reconnect
+    const previousMax = this.maxReconnectAttempts;
+    this.maxReconnectAttempts = 0;
+
+    // Close WebSocket
     if (this.ws) {
-      this.ws.onclose = null; // Prevent auto-reconnect
-      this.ws.close();
+      try {
+        this.ws.close();
+      } catch (e) {
+        // Ignore close errors
+      }
       this.ws = null;
     }
-    this._helloPayload = null;
+
+    // Restore max attempts after a brief delay
+    // This prevents the onclose handler from scheduling a reconnect
+    setTimeout(() => {
+      this.maxReconnectAttempts = previousMax;
+    }, 100);
+
+    this.stopHeartbeat();
     this.setStatus('disconnected');
     this.setQuality('lost');
+    this._helloPayload = null;
+    this.connectPromise = null;
+    this._reconnectAttempt = 0;
+
+    // Reject any pending requests
+    this.pendingRequests.forEach((pending, id) => {
+      pending.reject(new Error('Disconnected'));
+      this.pendingRequests.delete(id);
+    });
   }
 }
 
 // Singleton instance
 export const openclawClient = new OpenClawClient();
 
-// Auto-connect on module load
+// Auto-connect on module load with retry
+// Initial failure will trigger onclose handler with retry logic
 openclawClient.connect().catch(err => {
-  console.error('[OpenClaw] Initial connection failed:', err);
+  console.error('[OpenClaw] Initial connection failed, will retry:', err);
+  // No need to manually retry - onclose handler will schedule reconnection
 });

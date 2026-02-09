@@ -16,7 +16,6 @@ export function CreateMissionModal() {
   const [scheduleMode, setScheduleMode] = useState<'now' | 'schedule'>('now');
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
-  const [useLifecycleFlow, setUseLifecycleFlow] = useState(false);
   const [reviewEnabled, setReviewEnabled] = useState(false);
   const [reviewAgentId, setReviewAgentId] = useState(AGENTS[0].id);
   const [maxRevisions, setMaxRevisions] = useState(1);
@@ -35,7 +34,6 @@ export function CreateMissionModal() {
     setScheduleMode('now');
     setScheduleDate('');
     setScheduleTime('');
-    setUseLifecycleFlow(false);
     setReviewEnabled(false);
     setReviewAgentId(AGENTS[0].id);
     setMaxRevisions(1);
@@ -69,10 +67,7 @@ export function CreateMissionModal() {
       scheduled_at = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
     }
 
-    const directExecution = !useLifecycleFlow;
-    const initialStatus = directExecution
-      ? (scheduleMode === 'now' ? 'assigned' : 'scheduled')
-      : 'scheduled';
+    const initialStatus = scheduleMode === 'now' ? 'assigned' : 'scheduled';
 
     try {
       await createMission({
@@ -88,8 +83,8 @@ export function CreateMissionModal() {
         max_revisions: reviewEnabled ? maxRevisions : 1,
         status: initialStatus,
         mission_status: initialStatus,
-        mission_phase: directExecution ? 'tasks' : 'statement',
-        mission_phase_status: directExecution ? 'approved' : 'awaiting_approval',
+        mission_phase: 'tasks',
+        mission_phase_status: 'approved',
         mission_statement: instructions || title.trim(),
       });
 
@@ -293,38 +288,6 @@ export function CreateMissionModal() {
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Workflow mode */}
-          <div>
-            <label className="block text-sm text-zinc-400 mb-2">Workflow</label>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="workflow-mode"
-                  checked={!useLifecycleFlow}
-                  onChange={() => setUseLifecycleFlow(false)}
-                  className="accent-amber-500"
-                />
-                <span className="text-sm text-zinc-300">Direct execution (recommended)</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="workflow-mode"
-                  checked={useLifecycleFlow}
-                  onChange={() => setUseLifecycleFlow(true)}
-                  className="accent-amber-500"
-                />
-                <span className="text-sm text-zinc-300">Lifecycle approval (statement → plan → tasks)</span>
-              </label>
-            </div>
-            <p className="mt-2 text-xs text-zinc-500">
-              {useLifecycleFlow
-                ? 'Mission will wait for statement and plan approval before execution.'
-                : 'Mission is immediately runnable and picked up by dispatcher when due.'}
-            </p>
           </div>
 
           {/* AI Review Section */}

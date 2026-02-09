@@ -26,11 +26,18 @@ interface ReviewDecision {
   reassignAgentId: string | null;
 }
 
+// Configuration constants - some can be overridden via environment
 const CHECK_INTERVAL_MS = 60_000;
 const THINKING_BUFFER_LIMIT = 8000;
-const MAX_ACTIVE_RUNS = 1;
+// Allow overriding MAX_ACTIVE_RUNS via environment (increase if you have capacity)
+const MAX_ACTIVE_RUNS = import.meta.env.VITE_MAX_ACTIVE_RUNS 
+  ? parseInt(import.meta.env.VITE_MAX_ACTIVE_RUNS, 10) 
+  : 5; // Increased default from 3 to 5
 const STALE_RUN_GRACE_MS = 120_000;
 const CONNECTION_GRACE_PERIOD_MS = 5 * 60 * 1000; // 5 minutes
+
+// Log configuration on startup
+console.log(`[MissionScheduler] Configuration: MAX_ACTIVE_RUNS=${MAX_ACTIVE_RUNS}, CHECK_INTERVAL_MS=${CHECK_INTERVAL_MS}`);
 
 function extractText(message: unknown): string {
   if (!message) return '';
@@ -216,6 +223,44 @@ function parseReviewDecision(rawText: string): ReviewDecision {
   return fallbackRevise;
 }
 
+function buildUpstreamContextSection(task: Task): string {
+  const depIds = Array.isArray(task.dependency_task_ids) ? task.dependency_task_ids : [];
+  if (depIds.length === 0) return '';
+
+  const allTasks = useMissionControlStore.getState().tasks;
+  const taskMap = new Map(allTasks.map((t) => [t.id, t]));
+  const TOTAL_BUDGET = 16000;
+  const perTaskBudget = Math.floor(TOTAL_BUDGET / depIds.length);
+
+  const sections: string[] = [];
+  let totalChars = 0;
+
+  for (const depId of depIds) {
+    const dep = taskMap.get(depId);
+    if (!dep || !dep.output_text) continue;
+
+    const agentName = agentDisplay(dep.primary_agent_id).name;
+    const remaining = TOTAL_BUDGET - totalChars;
+    if (remaining <= 0) break;
+
+    const budget = Math.min(perTaskBudget, remaining);
+    const output = dep.output_text.length > budget
+      ? dep.output_text.slice(0, budget) + '\n[...truncated]'
+      : dep.output_text;
+
+    sections.push(`### ${dep.title} (by ${agentName})\n${output}`);
+    totalChars += output.length;
+  }
+
+  if (sections.length === 0) return '';
+
+  return [
+    '## Upstream Context',
+    'The following tasks completed before yours:',
+    ...sections,
+  ].join('\n');
+}
+
 function buildPrimaryPrompt(task: Task): string {
   const mediaSection = task.input_media.length > 0
     ? [
@@ -224,15 +269,18 @@ function buildPrimaryPrompt(task: Task): string {
       ].join('\n')
     : 'No media attached.';
 
+  const upstreamContext = buildUpstreamContextSection(task);
+
   return [
     'You are executing a mission.',
     `Mission title: ${task.title}`,
     task.input_text ? `Instructions:\n${task.input_text}` : 'Instructions: none provided.',
     mediaSection,
+    upstreamContext,
     '',
     'Return your complete final work as plain text.',
     'Do not ask follow-up questions; make reasonable assumptions and execute.',
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 function buildReviewHistorySection(task: Task): string {
@@ -455,6 +503,14 @@ export function useMissionScheduler() {
     syncMissionFromTask(taskId);
   }, [syncMissionFromTask]);
 
+  // ── Dual-scheduler coordination model ────────────────────────────────
+  // Two schedulers may claim missions concurrently:
+  //   1. Frontend scheduler (this hook) uses session_key prefix 'frontend:'
+  //   2. External mission-dispatcher (scripts/mission-dispatcher.mjs) uses 'dispatcher:'
+  // Each scheduler respects the other's claims via the session_key prefix.
+  // The Supabase UPDATE with .in('mission_status', claimableStatuses) acts as
+  // an optimistic lock -- only the first writer wins. If the row was already
+  // claimed (status changed), the UPDATE returns no rows and we back off.
   const claimMissionForExecution = useCallback(async (mission: Mission): Promise<boolean> => {
     if (!isSupabaseConfigured()) return true;
 
@@ -534,6 +590,53 @@ export function useMissionScheduler() {
       active_thinking: null,
       error_message: error,
     });
+
+    // ── Circuit breaker: stop sibling tasks if the mission is configured ──
+    const store = useMissionControlStore.getState();
+    const failedTask = store.tasks.find((t) => t.id === taskId);
+    if (!failedTask) return;
+
+    const missionId = failedTask.root_task_id || failedTask.id;
+    const mission = store.missions.find((m) => m.id === missionId);
+    // Read circuit_breaker from mission; default to 'continue' (backward compatible)
+    const circuitBreaker = (mission as Record<string, unknown> | undefined)?.circuit_breaker as
+      | 'stop_mission'
+      | 'stop_phase'
+      | 'continue'
+      | undefined;
+
+    if (!circuitBreaker || circuitBreaker === 'continue') return;
+
+    const siblingTasks = store.tasks.filter(
+      (t) => (t.root_task_id || t.id) === missionId && t.id !== taskId && t.id !== missionId,
+    );
+    const stoppableSiblings = siblingTasks.filter(
+      (t) => t.status === 'todo' || t.status === 'blocked',
+    );
+
+    for (const sibling of stoppableSiblings) {
+      // If stop_phase, only skip tasks that share the same phase grouping (same parent)
+      if (circuitBreaker === 'stop_phase' && sibling.parent_task_id !== failedTask.parent_task_id) {
+        continue;
+      }
+      updateTask(sibling.id, {
+        status: 'failed',
+        completed_at: new Date().toISOString(),
+        active_phase: null,
+        active_run_id: null,
+        active_summary: 'Stopped by circuit breaker.',
+        active_thinking: null,
+        error_message: `Stopped by circuit breaker: sibling task "${failedTask.title}" failed.`,
+      });
+    }
+
+    if (stoppableSiblings.length > 0) {
+      addActivity(
+        'circuit_breaker',
+        `Circuit breaker (${circuitBreaker}) triggered: ${stoppableSiblings.length} sibling task(s) stopped after "${failedTask.title}" failed.`,
+        failedTask.primary_agent_id,
+      );
+    }
   }, [updateTask]);
 
   const cleanupRun = useCallback((runId: string) => {
@@ -779,13 +882,30 @@ export function useMissionScheduler() {
     }
 
     if (permCheck.result === 'approval_required') {
-      updateTask(task.id, {
-        status: 'blocked',
-        active_summary: `Awaiting human approval (Agent is L${agentLevel})`,
-        error_message: null,
-      });
-      addActivity('permission_denied', `Task awaiting approval for L${agentLevel} agent ${agentDisplay(task.primary_agent_id).name}`, task.primary_agent_id);
-      return;
+      // User-created missions are pre-approved — the user explicitly assigned the agent
+      const isUserApproved = mission?.created_by === 'user';
+      if (!isUserApproved) {
+        // Register approval request in the store for UI visibility
+        const store = useMissionControlStore.getState();
+        const alreadyPending = store.pendingApprovals.some((a) => a.taskId === task.id);
+        if (!alreadyPending) {
+          store.requestApproval({
+            taskId: task.id,
+            missionId: mission?.id || task.root_task_id || task.id,
+            agentId: task.primary_agent_id,
+            agentLevel,
+            reason: `Agent level ${agentLevel} requires approval for execution`,
+          });
+        }
+
+        updateTask(task.id, {
+          status: 'blocked',
+          active_summary: `Awaiting human approval (Agent is L${agentLevel})`,
+          error_message: null,
+        });
+        addActivity('permission_denied', `Task awaiting approval for L${agentLevel} agent ${agentDisplay(task.primary_agent_id).name}`, task.primary_agent_id);
+        return;
+      }
     }
 
     updateTask(task.id, {
@@ -799,9 +919,13 @@ export function useMissionScheduler() {
   }, [claimMissionForExecution, launchRun, updateTask]);
 
   const handlePrimaryFinal = useCallback(async (task: Task, outputText: string) => {
+    // PRESERVE thinking: Don't clear active_thinking on phase transition!
+    // The thinking represents the agent's reasoning process and should be kept
+    // for visibility into how the output was produced. It's cleared later in
+    // completeTask/failTask when the task is truly finished.
     updateTask(task.id, {
       output_text: outputText,
-      active_thinking: null,
+      // active_thinking intentionally NOT cleared - preserve for visibility
     });
 
     if (task.review_enabled && task.review_agent_id) {
@@ -810,6 +934,7 @@ export function useMissionScheduler() {
       updateTask(task.id, {
         status: 'review',
         active_summary: `Handed off from ${primaryAgent.name} to ${reviewerAgent.name} for review`,
+        // active_thinking preserved - shows primary agent's final reasoning
       });
       addActivity('task_review_handoff', `Handed off from ${primaryAgent.name} to ${reviewerAgent.name}: ${task.title}`, task.review_agent_id);
       await launchRun(task.id, 'review');
@@ -908,12 +1033,21 @@ export function useMissionScheduler() {
     if (state === 'delta') {
       if (text) {
         run.buffer = trimThinking(run.buffer + text);
+        const newThinking = run.buffer;
+        const isSignificantUpdate = newThinking.length % 500 < 100; // Log every ~500 chars
+        
         updateTask(task.id, {
-          active_thinking: run.buffer,
+          active_thinking: newThinking,
           active_summary: run.phase === 'primary'
             ? `Working: ${agentDisplay(run.agentId).name}`
             : `Reviewing: ${agentDisplay(run.agentId).name}`,
         });
+
+        // Log thinking progress periodically for visibility
+        if (isSignificantUpdate && newThinking.length > 100) {
+          const preview = newThinking.slice(-100).replace(/\s+/g, ' ').trim();
+          addActivity('thinking_progress', `${agentDisplay(run.agentId).name} thinking: ${preview}...`, run.agentId);
+        }
       }
       return;
     }
@@ -955,13 +1089,28 @@ export function useMissionScheduler() {
       );
 
     try {
-      if (activeRunsRef.current.size >= MAX_ACTIVE_RUNS) return;
+      const currentCapacity = activeRunsRef.current.size;
+      
+      // Get tasks early for queue depth logging
+      const allTasks = useMissionControlStore.getState().tasks;
+      
+      if (currentCapacity >= MAX_ACTIVE_RUNS) {
+        console.log(`[MissionScheduler] At capacity: ${currentCapacity}/${MAX_ACTIVE_RUNS} active runs. Skipping tick.`);
+        // Log queue depth for visibility
+        const queuedCount = allTasks.filter(t => 
+          (t.status === 'todo' || t.status === 'blocked') && !t.active_run_id
+        ).length;
+        if (queuedCount > 0) {
+          console.log(`[MissionScheduler] ${queuedCount} missions waiting in queue`);
+        }
+        return;
+      }
 
       // Refresh the agent level cache each tick so permission checks are fresh
       await refreshAgentLevelCache();
 
       const now = Date.now();
-      const tasks = useMissionControlStore.getState().tasks;
+      const tasks = allTasks;
       const reviewTasks = tasks
         .filter((task) => task.status === 'review' && !task.active_run_id && !!task.review_agent_id)
         .sort((a, b) => parseTimeOrFallback(a.updated_at, now) - parseTimeOrFallback(b.updated_at, now));
@@ -1004,6 +1153,8 @@ export function useMissionScheduler() {
     const now = Date.now();
     const { tasks, missions } = useMissionControlStore.getState();
 
+    console.log(`[MissionScheduler] Recovering stale tasks. Active runs before: ${activeRunsRef.current.size}/${MAX_ACTIVE_RUNS}`);
+
     for (const task of tasks) {
       const isRunning = task.status === 'in_progress' || task.status === 'review';
       if (!isRunning) continue;
@@ -1012,6 +1163,12 @@ export function useMissionScheduler() {
       const staleByTime = Number.isFinite(updatedMs) && now - updatedMs > STALE_RUN_GRACE_MS;
       const staleNoRun = !task.active_run_id;
       if (!staleByTime && !staleNoRun) continue;
+
+      // CRITICAL: Clean up activeRunsRef when recovering stale runs
+      if (task.active_run_id) {
+        console.log(`[MissionScheduler] Cleaning up stale run ${task.active_run_id} for task ${task.id} during recovery`);
+        cleanupRun(task.active_run_id);
+      }
 
       if (task.status === 'review' && task.review_enabled && task.review_agent_id) {
         updateTask(task.id, {
@@ -1047,7 +1204,9 @@ export function useMissionScheduler() {
       });
       addActivity('task_recovered', `Recovered task after restart: ${task.title}`, task.primary_agent_id);
     }
-  }, [updateTask]);
+
+    console.log(`[MissionScheduler] Recovery complete. Active runs after: ${activeRunsRef.current.size}/${MAX_ACTIVE_RUNS}`);
+  }, [cleanupRun, updateTask]);
 
   // Check if connection grace period has expired for any in-progress missions
   const checkGracePeriodExpiry = useCallback(() => {
@@ -1058,10 +1217,16 @@ export function useMissionScheduler() {
     const elapsed = Date.now() - connectionLostAt;
     if (elapsed < CONNECTION_GRACE_PERIOD_MS) return;
 
+    console.log(`[MissionScheduler] Grace period expired (${Math.round(elapsed / 1000)}s). Cleaning up ${tasks.filter(t => (t.status === 'in_progress' || t.status === 'review') && t.active_run_id).length} stale runs...`);
+
     // Grace period expired -- fail active runs that have no heartbeat
     for (const task of tasks) {
       const isRunning = task.status === 'in_progress' || task.status === 'review';
       if (!isRunning || !task.active_run_id) continue;
+
+      // CRITICAL: Clean up activeRunsRef to reclaim capacity
+      console.log(`[MissionScheduler] Cleaning up run ${task.active_run_id} for task ${task.id} after grace period expiry`);
+      cleanupRun(task.active_run_id);
 
       updateTask(task.id, {
         status: 'failed',
@@ -1076,8 +1241,9 @@ export function useMissionScheduler() {
       store.removeCheckpoint(task.id);
     }
 
+    console.log(`[MissionScheduler] Grace period cleanup complete. Active runs: ${activeRunsRef.current.size}/${MAX_ACTIVE_RUNS}`);
     store.setConnectionLostAt(null);
-  }, [updateTask]);
+  }, [cleanupRun, updateTask]);
 
   useEffect(() => {
     if (initializingRef.current) return;
@@ -1094,7 +1260,10 @@ export function useMissionScheduler() {
       const store = useMissionControlStore.getState();
       store.setConnectionQuality(quality);
 
-      if (quality === 'lost') {
+      if (quality === 'degraded') {
+        // Degraded = heartbeat pong missed. Not disconnected yet, but signal it.
+        store.setReconnecting(true);
+      } else if (quality === 'lost') {
         store.setReconnecting(true);
         // Mark affected in-progress tasks with connection warning
         for (const task of store.tasks) {
@@ -1130,6 +1299,25 @@ export function useMissionScheduler() {
       store.setConnectionLostAt(null);
       store.setConnectionQuality('good');
       addActivity('connection_restored', 'Connection restored. Recovering interrupted missions...');
+
+      // Defensive cleanup: Remove any orphaned runs from activeRunsRef
+      // that don't have corresponding in-progress tasks
+      const activeTasks = new Set(
+        store.tasks
+          .filter(t => (t.status === 'in_progress' || t.status === 'review') && t.active_run_id)
+          .map(t => t.active_run_id)
+      );
+      let orphanedCount = 0;
+      for (const runId of activeRunsRef.current.keys()) {
+        if (!activeTasks.has(runId)) {
+          console.log(`[MissionScheduler] Cleaning up orphaned run ${runId} on reconnection`);
+          cleanupRun(runId);
+          orphanedCount++;
+        }
+      }
+      if (orphanedCount > 0) {
+        console.log(`[MissionScheduler] Cleaned up ${orphanedCount} orphaned runs on reconnection`);
+      }
 
       recoverStaleTasks();
       tick().catch((err) => {

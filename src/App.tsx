@@ -1,9 +1,9 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense, useRef } from 'react';
 import { AgentSidebar } from './components/agents/AgentSidebar';
 import { ChatPanel } from './components/chat/ChatPanel';
 import { ContextPanel } from './components/layout/ContextPanel';
 import { StatusBar } from './components/layout/StatusBar';
-import { SettingsPanel } from './components/settings/SettingsPanel';
+import { SettingsPage } from './components/settings';
 import { HireAgentWizard } from './components/agents/HireAgentWizard';
 import { AgentProfilePanel } from './components/agents/AgentProfilePanel';
 import { MissionControlTab } from './components/mission-control/MissionControlTab';
@@ -30,6 +30,7 @@ const PerformanceReviewPage = lazy(() => import('./components/reviews/Performanc
 const ContextTab = lazy(() => import('./components/context/ContextTab').then(m => ({ default: m.ContextTab })));
 const WorkflowsTab = lazy(() => import('./components/workflows/WorkflowsTab').then(m => ({ default: m.WorkflowsTab })));
 const CalendarTab = lazy(() => import('./components/calendar/CalendarTab').then(m => ({ default: m.CalendarTab })));
+const TeamsTab = lazy(() => import('./components/teams/TeamsTab').then(m => ({ default: m.TeamsTab })));
 
 // Lazy-load CRM detail panels
 const ContactDetail = lazy(() => import('./components/crm/ContactDetail').then(m => ({ default: m.ContactDetail })));
@@ -38,10 +39,13 @@ const DealDetail = lazy(() => import('./components/crm/DealDetail').then(m => ({
 const QuoteDetail = lazy(() => import('./components/invoicing/QuoteDetail').then(m => ({ default: m.QuoteDetail })));
 const InvoiceDetail = lazy(() => import('./components/invoicing/InvoiceDetail').then(m => ({ default: m.InvoiceDetail })));
 const EventDetail = lazy(() => import('./components/calendar/EventDetail').then(m => ({ default: m.EventDetail })));
+const AgentRoleCard = lazy(() => import('./components/teams/AgentRoleCard').then(m => ({ default: m.AgentRoleCard })));
 
 function App() {
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const activeTab = useMissionControlStore((s) => s.activeTab);
   const setActiveTab = useMissionControlStore((s) => s.setActiveTab);
   const selectedMission = useSelectedMission();
@@ -79,6 +83,23 @@ function App() {
     }
   }, []);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [dropdownOpen]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -87,9 +108,12 @@ function App() {
         e.preventDefault();
         setSettingsOpen(prev => !prev);
       }
-      // Escape to close settings
+      // Escape to close settings or dropdown
       if (e.key === 'Escape' && settingsOpen) {
         setSettingsOpen(false);
+      }
+      if (e.key === 'Escape' && dropdownOpen) {
+        setDropdownOpen(false);
       }
       // Tab switching (Cmd+1-5)
       if (e.metaKey && e.key === '1') {
@@ -128,11 +152,15 @@ function App() {
         e.preventDefault();
         setActiveTab('automation');
       }
+      if (e.metaKey && e.key === '0') {
+        e.preventDefault();
+        setActiveTab('teams');
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [settingsOpen, setActiveTab]);
+  }, [settingsOpen, dropdownOpen, setActiveTab]);
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
@@ -145,129 +173,241 @@ function App() {
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Tab Switcher */}
           <div className="flex items-center gap-1 px-4 py-2 border-b border-zinc-800 bg-zinc-900/50">
+            {/* Primary Navigation: Chat & Missions */}
             <button
               onClick={() => setActiveTab('chat')}
               className={`
-                px-4 py-1.5 text-sm font-medium rounded-lg transition-colors
+                flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-lg transition-colors
                 ${activeTab === 'chat'
                   ? 'bg-amber-500/20 text-amber-400'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
                 }
               `}
             >
-              💬 Chat
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              Chat
             </button>
             <button
               onClick={() => setActiveTab('mission-control')}
               className={`
-                px-4 py-1.5 text-sm font-medium rounded-lg transition-colors
+                flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-lg transition-colors
                 ${activeTab === 'mission-control'
                   ? 'bg-amber-500/20 text-amber-400'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
                 }
               `}
             >
-              🏛️ Missions
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                <line x1="4" y1="22" x2="4" y2="15"/>
+              </svg>
+              Missions
             </button>
             <button
-              onClick={() => setActiveTab('crm')}
+              onClick={() => setActiveTab('teams')}
               className={`
-                px-4 py-1.5 text-sm font-medium rounded-lg transition-colors
-                ${activeTab === 'crm'
+                flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-lg transition-colors
+                ${activeTab === 'teams'
                   ? 'bg-amber-500/20 text-amber-400'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
                 }
               `}
             >
-              👤 CRM
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              Teams
             </button>
-            <button
-              onClick={() => setActiveTab('products')}
-              className={`
-                px-4 py-1.5 text-sm font-medium rounded-lg transition-colors
-                ${activeTab === 'products'
-                  ? 'bg-amber-500/20 text-amber-400'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-                }
-              `}
-            >
-              📦 Products
-            </button>
-            <button
-              onClick={() => setActiveTab('projects')}
-              className={`
-                px-4 py-1.5 text-sm font-medium rounded-lg transition-colors
-                ${activeTab === 'projects'
-                  ? 'bg-amber-500/20 text-amber-400'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-                }
-              `}
-            >
-              📊 Projects
-            </button>
-            <button
-              onClick={() => setActiveTab('reports')}
-              className={`
-                px-4 py-1.5 text-sm font-medium rounded-lg transition-colors
-                ${activeTab === 'reports'
-                  ? 'bg-amber-500/20 text-amber-400'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-                }
-              `}
-            >
-              📈 Reports
-            </button>
-            <button
-              onClick={() => setActiveTab('reviews')}
-              className={`
-                px-4 py-1.5 text-sm font-medium rounded-lg transition-colors
-                ${activeTab === 'reviews'
-                  ? 'bg-amber-500/20 text-amber-400'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-                }
-              `}
-            >
-              📋 Reviews
-            </button>
-            <button
-              onClick={() => setActiveTab('context')}
-              className={`
-                px-4 py-1.5 text-sm font-medium rounded-lg transition-colors
-                ${activeTab === 'context'
-                  ? 'bg-amber-500/20 text-amber-400'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-                }
-              `}
-            >
-              📄 Context
-            </button>
-            <button
-              onClick={() => setActiveTab('automation')}
-              className={`
-                px-4 py-1.5 text-sm font-medium rounded-lg transition-colors
-                ${activeTab === 'automation'
-                  ? 'bg-amber-500/20 text-amber-400'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-                }
-              `}
-            >
-              ⚡ Automation
-            </button>
-            <button
-              onClick={() => setActiveTab('calendar')}
-              className={`
-                px-4 py-1.5 text-sm font-medium rounded-lg transition-colors
-                ${activeTab === 'calendar'
-                  ? 'bg-amber-500/20 text-amber-400'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-                }
-              `}
-            >
-              📅 Calendar
-            </button>
+
+            {/* Spacer */}
             <div className="flex-1" />
+
+            {/* Right Side: More Dropdown + Notifications */}
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={() => setDropdownOpen(!dropdownOpen)}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="1"/>
+                  <circle cx="19" cy="12" r="1"/>
+                  <circle cx="5" cy="12" r="1"/>
+                </svg>
+                More
+              </button>
+
+              {/* Dropdown Menu */}
+              {dropdownOpen && (
+                <div className="absolute right-0 top-full mt-1 w-48 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50 py-1">
+                  <button
+                    onClick={() => {
+                      setActiveTab('crm');
+                      setDropdownOpen(false);
+                    }}
+                    className={`
+                      w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors
+                      ${activeTab === 'crm'
+                        ? 'bg-amber-500/20 text-amber-400'
+                        : 'text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100'
+                      }
+                    `}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                      <circle cx="12" cy="7" r="4"/>
+                    </svg>
+                    CRM
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab('products');
+                      setDropdownOpen(false);
+                    }}
+                    className={`
+                      w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors
+                      ${activeTab === 'products'
+                        ? 'bg-amber-500/20 text-amber-400'
+                        : 'text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100'
+                      }
+                    `}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                      <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                      <line x1="12" y1="22.08" x2="12" y2="12"/>
+                    </svg>
+                    Products
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab('projects');
+                      setDropdownOpen(false);
+                    }}
+                    className={`
+                      w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors
+                      ${activeTab === 'projects'
+                        ? 'bg-amber-500/20 text-amber-400'
+                        : 'text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100'
+                      }
+                    `}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <rect x="3" y="3" width="7" height="7"/>
+                      <rect x="14" y="3" width="7" height="7"/>
+                      <rect x="14" y="14" width="7" height="7"/>
+                      <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                    Projects
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab('reports');
+                      setDropdownOpen(false);
+                    }}
+                    className={`
+                      w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors
+                      ${activeTab === 'reports'
+                        ? 'bg-amber-500/20 text-amber-400'
+                        : 'text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100'
+                      }
+                    `}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                    </svg>
+                    Reports
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab('reviews');
+                      setDropdownOpen(false);
+                    }}
+                    className={`
+                      w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors
+                      ${activeTab === 'reviews'
+                        ? 'bg-amber-500/20 text-amber-400'
+                        : 'text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100'
+                      }
+                    `}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <path d="M9 11l3 3L22 4"/>
+                      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                    </svg>
+                    Reviews
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab('context');
+                      setDropdownOpen(false);
+                    }}
+                    className={`
+                      w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors
+                      ${activeTab === 'context'
+                        ? 'bg-amber-500/20 text-amber-400'
+                        : 'text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100'
+                      }
+                    `}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                      <line x1="16" y1="13" x2="8" y2="13"/>
+                      <line x1="16" y1="17" x2="8" y2="17"/>
+                      <polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                    Context
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab('automation');
+                      setDropdownOpen(false);
+                    }}
+                    className={`
+                      w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors
+                      ${activeTab === 'automation'
+                        ? 'bg-amber-500/20 text-amber-400'
+                        : 'text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100'
+                      }
+                    `}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                    Automation
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab('calendar');
+                      setDropdownOpen(false);
+                    }}
+                    className={`
+                      w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors
+                      ${activeTab === 'calendar'
+                        ? 'bg-amber-500/20 text-amber-400'
+                        : 'text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100'
+                      }
+                    `}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                      <line x1="16" y1="2" x2="16" y2="6"/>
+                      <line x1="8" y1="2" x2="8" y2="6"/>
+                      <line x1="3" y1="10" x2="21" y2="10"/>
+                    </svg>
+                    Calendar
+                  </button>
+                </div>
+              )}
+            </div>
+
             <NotificationBell />
-            <span className="text-xs text-zinc-600">⌘1-9</span>
+            <span className="text-xs text-zinc-600">⌘0-9</span>
           </div>
           
           {/* Tab Content */}
@@ -314,11 +454,20 @@ function App() {
                 <CalendarTab />
               </Suspense>
             )}
+            {activeTab === 'teams' && (
+              <Suspense fallback={<div className="flex items-center justify-center h-full text-zinc-500">Loading Teams...</div>}>
+                <TeamsTab />
+              </Suspense>
+            )}
           </div>
         </div>
         
         {/* Right: Context Panel (detail panels for Mission Control, CRM, and Agent Profile) */}
-        {selectedProfileAgentId ? (
+        {activeTab === 'teams' && selectedProfileAgentId ? (
+          <Suspense fallback={null}>
+            <AgentRoleCard />
+          </Suspense>
+        ) : selectedProfileAgentId ? (
           <div className="w-80 border-l border-zinc-800 bg-zinc-900/50">
             <AgentProfilePanel />
           </div>
@@ -371,8 +520,8 @@ function App() {
       {/* Status Bar */}
       <StatusBar />
       
-      {/* Settings Modal */}
-      <SettingsPanel
+      {/* Settings Page */}
+      <SettingsPage
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
       />

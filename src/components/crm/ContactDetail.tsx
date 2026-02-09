@@ -363,7 +363,7 @@ export function ContactDetail() {
           ) : (
             <div className="space-y-1.5">
               {contactEmails.slice(0, 5).map((email) => {
-                const emailStatusConfig = EMAIL_STATUS_CONFIG[email.status];
+                const statusConfig = EMAIL_STATUS_CONFIG[email.status];
                 return (
                   <div
                     key={email.id}
@@ -373,8 +373,13 @@ export function ContactDetail() {
                       {email.direction === 'inbound' ? '\u2199\uFE0F' : '\u2197\uFE0F'}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs text-zinc-300 truncate">
-                        {email.subject || '(no subject)'}
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs text-zinc-300 truncate">
+                          {email.subject || '(no subject)'}
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full bg-${statusConfig.color}-500/20 text-${statusConfig.color}-400 shrink-0`}>
+                          {statusConfig.label}
+                        </span>
                       </div>
                       <div className="text-[10px] text-zinc-600">
                         {relativeTime(email.sent_at || email.received_at || email.created_at)}

@@ -7,7 +7,6 @@ import {
   handleOAuthCallback,
   sendEmail as gmailSendEmail,
   fetchEmails as gmailFetchEmails,
-  syncInbox as gmailSyncInbox,
   isGmailConfigured,
   openMailto,
 } from '../lib/gmail';

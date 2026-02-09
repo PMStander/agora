@@ -3,7 +3,7 @@ import { useCalendarStore, useSelectedEvent } from '../../stores/calendar';
 import { useCalendar } from '../../hooks/useCalendar';
 import { EVENT_TYPE_CONFIG, EVENT_STATUS_CONFIG } from '../../types/calendar';
 import type { CalendarEventStatus } from '../../types/calendar';
-import { getAgent, AGENTS } from '../../types/supabase';
+import { getAgent } from '../../types/supabase';
 
 function formatDateTime(iso: string, allDay: boolean): string {
   const d = new Date(iso);
@@ -33,7 +33,6 @@ export function EventDetail() {
   if (!event) return null;
 
   const typeConfig = EVENT_TYPE_CONFIG[event.event_type];
-  const statusConfig = EVENT_STATUS_CONFIG[event.status];
   const agent = event.owner_agent_id ? getAgent(event.owner_agent_id) : null;
 
   const handleStatusChange = (status: CalendarEventStatus) => {

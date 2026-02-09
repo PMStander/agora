@@ -16,3 +16,7 @@ export { MemoryViewer } from './MemoryViewer';
 export { DailyNotesTab } from './DailyNotesTab';
 export { LongTermMemoryTab } from './LongTermMemoryTab';
 export { ProjectContextsTab } from './ProjectContextsTab';
+export { SemanticSearchTab } from './SemanticSearchTab';
+export { LearnedPatternsTab } from './LearnedPatternsTab';
+export { PrioritiesTab } from './PrioritiesTab';
+export { SummariesTab } from './SummariesTab';

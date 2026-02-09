@@ -427,24 +427,32 @@ export function DealDetail() {
             <p className="text-xs text-zinc-600">No emails linked</p>
           ) : (
             <div className="space-y-1.5">
-              {dealEmails.slice(0, 5).map((email) => (
-                <div
-                  key={email.id}
-                  className="flex items-start gap-2 bg-zinc-800/30 border border-zinc-800 rounded p-2"
-                >
-                  <span className="text-sm shrink-0">
-                    {email.direction === 'inbound' ? '\u2199\uFE0F' : '\u2197\uFE0F'}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs text-zinc-300 truncate">
-                      {email.subject || '(no subject)'}
-                    </div>
-                    <div className="text-[10px] text-zinc-600">
-                      {relativeTime(email.sent_at || email.received_at || email.created_at)}
+              {dealEmails.slice(0, 5).map((email) => {
+                const statusConfig = EMAIL_STATUS_CONFIG[email.status];
+                return (
+                  <div
+                    key={email.id}
+                    className="flex items-start gap-2 bg-zinc-800/30 border border-zinc-800 rounded p-2"
+                  >
+                    <span className="text-sm shrink-0">
+                      {email.direction === 'inbound' ? '\u2199\uFE0F' : '\u2197\uFE0F'}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs text-zinc-300 truncate">
+                          {email.subject || '(no subject)'}
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full bg-${statusConfig.color}-500/20 text-${statusConfig.color}-400 shrink-0`}>
+                          {statusConfig.label}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-zinc-600">
+                        {relativeTime(email.sent_at || email.received_at || email.created_at)}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

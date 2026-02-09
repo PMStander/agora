@@ -1,8 +1,11 @@
 import { useEffect } from 'react';
 import { useAgentStore } from '../stores/agents';
+import { useMissionControlStore } from '../stores/missionControl';
 
 export function useKeyboardShortcuts() {
-  const { teams, activeAgentId, setActiveAgent } = useAgentStore();
+  const teams = useAgentStore((s) => s.teams);
+  const activeAgentId = useAgentStore((s) => s.activeAgentId);
+  const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
   
   // Flatten agents for quick switching
   const allAgents = teams.flatMap(t => t.agents);
@@ -36,6 +39,7 @@ export function useKeyboardShortcuts() {
       }
 
       // Cmd/Ctrl + Shift + O/P/B routes to Orchestrator/Personal/Business lead
+      // Cmd/Ctrl + Shift + N opens Launch Operation wizard
       if ((e.metaKey || e.ctrlKey) && e.shiftKey) {
         const key = e.key.toLowerCase();
         if (key === 'o' && teamLeads.orchestrator) {
@@ -47,6 +51,9 @@ export function useKeyboardShortcuts() {
         } else if (key === 'b' && teamLeads.business) {
           e.preventDefault();
           setActiveAgent(teamLeads.business);
+        } else if (key === 'n') {
+          e.preventDefault();
+          useMissionControlStore.getState().setOperationWizardOpen(true);
         }
       }
 

@@ -115,7 +115,45 @@ export function KanbanBoard() {
 
   const getMissionsByColumn = (columnId: BoardColumnId) => {
     const nowMs = Date.now();
-    return missions.filter((mission) => getMissionColumnId(mission, nowMs) === columnId);
+    const filtered = missions.filter((mission) => getMissionColumnId(mission, nowMs) === columnId);
+
+    return filtered.sort((a, b) => {
+      switch (columnId) {
+        // Queued / Ready: next-to-trigger first (soonest scheduled at top)
+        case 'queued':
+        case 'ready': {
+          const aTime = Date.parse(a.scheduled_at || '') || 0;
+          const bTime = Date.parse(b.scheduled_at || '') || 0;
+          return aTime - bTime;
+        }
+        // Active columns: most recently started at top
+        case 'in_progress':
+        case 'pending_review': {
+          const aTime = Date.parse(a.started_at || a.updated_at || '') || 0;
+          const bTime = Date.parse(b.started_at || b.updated_at || '') || 0;
+          return bTime - aTime;
+        }
+        // Done: most recently completed at top
+        case 'done': {
+          const aTime = Date.parse(a.completed_at || a.updated_at || '') || 0;
+          const bTime = Date.parse(b.completed_at || b.updated_at || '') || 0;
+          return bTime - aTime;
+        }
+        // Failed: most recent failure at top
+        case 'failed': {
+          const aTime = Date.parse(a.updated_at || '') || 0;
+          const bTime = Date.parse(b.updated_at || '') || 0;
+          return bTime - aTime;
+        }
+        // Planning: newest plans at top
+        case 'planning':
+        default: {
+          const aTime = Date.parse(a.created_at || '') || 0;
+          const bTime = Date.parse(b.created_at || '') || 0;
+          return bTime - aTime;
+        }
+      }
+    });
   };
 
   return (

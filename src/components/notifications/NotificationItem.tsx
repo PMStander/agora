@@ -1,6 +1,6 @@
 import { cn } from '../../lib/utils';
 import type { Notification } from '../../types/notifications';
-import { NOTIFICATION_TYPE_CONFIG, SEVERITY_CONFIG } from '../../types/notifications';
+import { NOTIFICATION_TYPE_CONFIG } from '../../types/notifications';
 
 interface NotificationItemProps {
   notification: Notification;
@@ -23,7 +23,6 @@ function timeAgo(dateStr: string): string {
 
 export function NotificationItem({ notification, onRead, onClick }: NotificationItemProps) {
   const typeConfig = NOTIFICATION_TYPE_CONFIG[notification.type];
-  const severityConfig = SEVERITY_CONFIG[notification.severity];
 
   const handleClick = () => {
     if (!notification.is_read) {

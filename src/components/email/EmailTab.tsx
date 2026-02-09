@@ -24,7 +24,6 @@ export function EmailTab() {
   const setComposeOpen = useEmailStore((s) => s.setComposeOpen);
   const searchQuery = useEmailStore((s) => s.searchQuery);
   const setSearchQuery = useEmailStore((s) => s.setSearchQuery);
-  const selectedEmailId = useEmailStore((s) => s.selectedEmailId);
 
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [showAccountSetup, setShowAccountSetup] = useState(false);

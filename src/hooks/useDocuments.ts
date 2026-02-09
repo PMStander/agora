@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import type { CrmDocument, DocType, DocStatus, DocumentEntityType } from '../types/documents';
+import type { CrmDocument, DocType, DocumentEntityType } from '../types/documents';
 
 const STORAGE_BUCKET = 'crm-documents';
 

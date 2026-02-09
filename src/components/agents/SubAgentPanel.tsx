@@ -19,7 +19,7 @@ interface SubAgentPanelProps {
 }
 
 export function SubAgentPanel({ onSpawn, onRunEvent }: SubAgentPanelProps) {
-  const { teams } = useAgentStore();
+  const teams = useAgentStore((s) => s.teams);
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [task, setTask] = useState('');

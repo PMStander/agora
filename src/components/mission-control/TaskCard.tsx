@@ -152,6 +152,21 @@ export function TaskCard({ task }: TaskCardProps) {
           {task.active_summary}
         </div>
       )}
+
+      {/* Live Thinking Preview - Shows last 150 chars of agent reasoning */}
+      {task.active_thinking && task.active_phase && (
+        <div className="mt-2 pt-2 border-t border-zinc-700/50">
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-[10px] text-amber-400/80 font-medium">
+              {task.active_phase === 'primary' ? 'Thinking' : 'Reviewing'}
+            </span>
+          </div>
+          <div className="text-[10px] text-zinc-500 line-clamp-3 font-mono leading-relaxed">
+            {task.active_thinking.slice(-150)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

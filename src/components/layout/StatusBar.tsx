@@ -5,7 +5,9 @@ import { cn } from '../../lib/utils';
 import { openclawClient } from '../../lib/openclawClient';
 
 export function StatusBar() {
-  const { isLoading, teams, activeAgentId } = useAgentStore();
+  const isLoading = useAgentStore((s) => s.isLoading);
+  const teams = useAgentStore((s) => s.teams);
+  const activeAgentId = useAgentStore((s) => s.activeAgentId);
   const { isConnected, isConnecting, connectionError, connect } = useOpenClaw();
   const connectionQuality = useMissionControlStore((s) => s.connectionQuality);
   const reconnecting = useMissionControlStore((s) => s.reconnecting);

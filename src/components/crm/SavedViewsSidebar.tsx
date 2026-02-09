@@ -26,7 +26,7 @@ interface ContextMenuState {
 }
 
 export function SavedViewsSidebar({ collapsed, onToggleCollapse }: SavedViewsSidebarProps) {
-  const { views, pinnedViews, activeView, applyView, clearActiveView, deleteView, togglePin } =
+  const { views, pinnedViews, applyView, clearActiveView, deleteView, togglePin } =
     useSavedViews();
   const activeViewId = useCrmStore((s) => s.activeViewId);
   const activeSubTab = useCrmStore((s) => s.activeSubTab);

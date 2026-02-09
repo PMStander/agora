@@ -28,7 +28,6 @@ export function CreateEventModal({
   const { createEvent } = useCalendar();
   const prefill = useCalendarStore((s) => s.createModalPrefill);
   const contacts = useCrmStore((s) => s.contacts);
-  const companies = useCrmStore((s) => s.companies);
   const deals = useCrmStore((s) => s.deals);
 
   // Use prefill from store or from props
@@ -47,7 +46,6 @@ export function CreateEventModal({
   const [meetingUrl, setMeetingUrl] = useState('');
   const [description, setDescription] = useState('');
   const [contactId, setContactId] = useState(effectiveContactId);
-  const [companyId, setCompanyId] = useState(effectiveCompanyId);
   const [dealId, setDealId] = useState(effectiveDealId);
   const [ownerAgentId, setOwnerAgentId] = useState('');
   const [recurrence, setRecurrence] = useState('');
@@ -70,7 +68,7 @@ export function CreateEventModal({
       location: location.trim() || undefined,
       meeting_url: meetingUrl.trim() || undefined,
       contact_id: contactId || undefined,
-      company_id: companyId || undefined,
+      company_id: effectiveCompanyId || undefined,
       deal_id: dealId || undefined,
       project_id: prefillProjectId || prefill?.project_id || undefined,
       owner_agent_id: ownerAgentId || undefined,

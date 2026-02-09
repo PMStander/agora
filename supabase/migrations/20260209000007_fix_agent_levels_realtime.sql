@@ -22,14 +22,14 @@ END $$;
 
 -- Verify the changes
 SELECT
-  schemaname,
-  tablename,
-  CASE relreplident
+  pt.schemaname,
+  pt.tablename,
+  CASE c.relreplident
     WHEN 'd' THEN 'default'
     WHEN 'n' THEN 'nothing'
     WHEN 'i' THEN 'index'
     WHEN 'f' THEN 'full'
   END as replica_identity
 FROM pg_publication_tables pt
-JOIN pg_class c ON pt.relid = c.oid
-WHERE tablename IN ('agent_levels', 'guardrail_violations', 'agent_level_transitions');
+JOIN pg_class c ON c.relname = pt.tablename
+WHERE pt.tablename IN ('agent_levels', 'guardrail_violations', 'agent_level_transitions');
