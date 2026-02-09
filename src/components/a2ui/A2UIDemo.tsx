@@ -3,7 +3,7 @@ import { A2UIRenderer } from './A2UIRenderer';
 import type { A2UISurface, A2UIComponent } from '../../hooks/useA2UI';
 
 // Demo surfaces to test the renderer
-const createDemoSurface = (type: 'stats' | 'list' | 'form' | 'dashboard'): A2UISurface => {
+const createDemoSurface = (type: 'stats' | 'list' | 'form' | 'dashboard' | 'personal' | 'business'): A2UISurface => {
   const components = new Map<string, A2UIComponent>();
   
   switch (type) {
@@ -75,18 +75,97 @@ const createDemoSurface = (type: 'stats' | 'list' | 'form' | 'dashboard'): A2UIS
           ]
         }
       };
+
+    case 'personal':
+      components.set('root', { id: 'root', type: 'Column', children: ['header', 'status', 'agendaCard', 'habitsCard', 'actions'] });
+      components.set('header', { id: 'header', type: 'Heading', props: { text: '🏡 Personal Command Center', level: 2 } });
+      components.set('status', { id: 'status', type: 'KpiGrid', props: { items: '{{wellbeing}}', columns: 3 } });
+      components.set('agendaCard', { id: 'agendaCard', type: 'Card', props: { title: 'Today\'s Agenda' }, children: ['agenda'] });
+      components.set('agenda', { id: 'agenda', type: 'Agenda', props: { items: '{{agenda}}' } });
+      components.set('habitsCard', { id: 'habitsCard', type: 'Card', props: { title: 'Habits & Follow-ups' }, children: ['habits', 'focusTags', 'habitProgress'] });
+      components.set('habits', { id: 'habits', type: 'Checklist', props: { items: '{{habits}}' } });
+      components.set('focusTags', { id: 'focusTags', type: 'TagList', props: { items: '{{focusAreas}}' } });
+      components.set('habitProgress', { id: 'habitProgress', type: 'Progress', props: { value: '{{habitProgress}}', max: 100, label: 'Consistency' } });
+      components.set('actions', { id: 'actions', type: 'ActionBar', props: { actions: '{{personalActions}}' } });
+      return {
+        id: 'personal-demo',
+        rootId: 'root',
+        components,
+        dataModel: {
+          wellbeing: [
+            { label: 'Sleep', value: '7h 42m', delta: '+8%', tone: 'success' },
+            { label: 'Workout', value: '42 min', delta: 'On Track', tone: 'info' },
+            { label: 'Nutrition', value: '1,980 kcal', delta: '-3%', tone: 'warning' },
+          ],
+          agenda: [
+            { time: '07:00', title: 'Mobility + cardio', subtitle: 'Hippocrates plan', status: 'Done' },
+            { time: '12:30', title: 'Family lunch call', subtitle: 'Confucius reminder', status: 'Upcoming' },
+            { time: '18:00', title: 'Review personal budget', subtitle: 'Seneca checklist', status: 'Pending' },
+          ],
+          habits: [
+            { label: 'Hydration goal (3L)', done: true, owner: 'You' },
+            { label: 'Journal reflections', done: false, owner: 'Marcus', due: 'Tonight' },
+            { label: 'No-spend day', done: false, owner: 'Seneca', due: 'Today' },
+          ],
+          focusAreas: ['Health', 'Family', 'Finance', 'Learning'],
+          habitProgress: 68,
+          personalActions: [
+            { label: 'Reschedule evening review', action: 'reschedule_review' },
+            { label: 'Generate meal plan', action: 'generate_meal_plan', variant: 'primary' },
+          ],
+        },
+      };
+
+    case 'business':
+      components.set('root', { id: 'root', type: 'Column', children: ['header', 'kpis', 'pipelineCard', 'financeCard', 'actions'] });
+      components.set('header', { id: 'header', type: 'Heading', props: { text: '⚔️ Business Operations Deck', level: 2 } });
+      components.set('kpis', { id: 'kpis', type: 'KpiGrid', props: { items: '{{businessKpis}}', columns: 4 } });
+      components.set('pipelineCard', { id: 'pipelineCard', type: 'Card', props: { title: 'Execution Pipeline' }, children: ['pipelineChecklist'] });
+      components.set('pipelineChecklist', { id: 'pipelineChecklist', type: 'Checklist', props: { items: '{{pipeline}}' } });
+      components.set('financeCard', { id: 'financeCard', type: 'Card', props: { title: 'Finance Snapshot' }, children: ['financeTable'] });
+      components.set('financeTable', { id: 'financeTable', type: 'FinanceTable', props: { rows: '{{financeRows}}', currency: 'USD' } });
+      components.set('actions', { id: 'actions', type: 'ActionBar', props: { actions: '{{businessActions}}' } });
+      return {
+        id: 'business-demo',
+        rootId: 'root',
+        components,
+        dataModel: {
+          businessKpis: [
+            { label: 'MRR', value: '$86.2k', delta: '+5.1%', tone: 'success' },
+            { label: 'Gross Margin', value: '62%', delta: '+1.4%', tone: 'success' },
+            { label: 'Churn', value: '2.8%', delta: '-0.6%', tone: 'success' },
+            { label: 'Sales Cycle', value: '19 days', delta: '+2 days', tone: 'warning' },
+          ],
+          pipeline: [
+            { label: 'Finalize hiring plan (HR)', done: true, owner: 'Spartacus' },
+            { label: 'Ship onboarding automation', done: false, owner: 'Achilles', due: 'Tomorrow' },
+            { label: 'Prepare board memo', done: false, owner: 'Leonidas', due: 'Friday' },
+          ],
+          financeRows: [
+            { category: 'Revenue', amount: 86200, change: 5.1 },
+            { category: 'Payroll', amount: 28400, change: 1.2 },
+            { category: 'Infrastructure', amount: 9900, change: -3.4 },
+            { category: 'Marketing', amount: 14300, change: 6.8 },
+          ],
+          businessActions: [
+            { label: 'Open Risk Review', action: 'open_risk_review' },
+            { label: 'Draft Weekly Exec Brief', action: 'draft_exec_brief', variant: 'primary' },
+            { label: 'Pause Campaign', action: 'pause_campaign', variant: 'danger' },
+          ],
+        },
+      };
   }
 };
 
 export function A2UIDemo() {
-  const [activeDemo, setActiveDemo] = useState<'stats' | 'list' | 'form' | 'dashboard'>('dashboard');
+  const [activeDemo, setActiveDemo] = useState<'stats' | 'list' | 'form' | 'dashboard' | 'personal' | 'business'>('dashboard');
   const surface = createDemoSurface(activeDemo);
 
   return (
     <div className="space-y-4">
       {/* Demo selector */}
       <div className="flex gap-2 flex-wrap">
-        {(['dashboard', 'stats', 'list', 'form'] as const).map(demo => (
+        {(['dashboard', 'personal', 'business', 'stats', 'list', 'form'] as const).map(demo => (
           <button
             key={demo}
             onClick={() => setActiveDemo(demo)}

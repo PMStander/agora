@@ -1,6 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Task, Agent } from '../../types/supabase';
+import type { Task } from '../../types/supabase';
 import { useMissionControlStore } from '../../stores/missionControl';
 
 interface TaskCardProps {
@@ -20,6 +20,23 @@ const priorityLabels: Record<string, string> = {
   high: 'High',
   urgent: '🔥',
 };
+
+function formatDueDate(iso: string): string {
+  const due = new Date(iso);
+  const now = new Date();
+  const diffMs = due.getTime() - now.getTime();
+  const mins = Math.round(diffMs / 60000);
+  if (Math.abs(mins) < 60) {
+    if (mins >= 0) return `in ${mins}m`;
+    return `${Math.abs(mins)}m late`;
+  }
+  const hours = Math.round(mins / 60);
+  if (Math.abs(hours) < 24) {
+    if (hours >= 0) return `in ${hours}h`;
+    return `${Math.abs(hours)}h late`;
+  }
+  return due.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
 
 export function TaskCard({ task }: TaskCardProps) {
   const selectTask = useMissionControlStore((s) => s.selectTask);
@@ -56,6 +73,43 @@ export function TaskCard({ task }: TaskCardProps) {
       <div className="flex items-center gap-2 mb-2">
         <span className={`w-2 h-2 rounded-full ${priorityColors[task.priority]}`} />
         <span className="text-xs text-zinc-500">{priorityLabels[task.priority]}</span>
+        {task.review_enabled && (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">Review</span>
+        )}
+        {task.active_phase && (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300" title={task.active_summary ?? undefined}>
+            {task.active_phase === 'primary' ? 'Running' : 'Reviewing'}
+          </span>
+        )}
+        {!task.active_phase && (task.status === 'todo' || task.status === 'blocked') && (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-700 text-zinc-300" title={task.active_summary ?? undefined}>
+            Waiting
+          </span>
+        )}
+        {task.status === 'blocked' && (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300">Blocked</span>
+        )}
+        {task.title.endsWith('(Redo)') && (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-300">Redo</span>
+        )}
+        {task.revision_round > 0 && (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300">
+            R{task.revision_round}
+          </span>
+        )}
+        {task.review_history && task.review_history.length > 0 && (
+          <span
+            className="text-xs px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300"
+            title={task.review_history.map((entry) => `${entry.action}: ${entry.summary}`).join('\n')}
+          >
+            {task.review_history.length} review{task.review_history.length !== 1 ? 's' : ''}
+          </span>
+        )}
+        {task.dependency_task_ids.length > 0 && (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-700 text-zinc-300">
+            deps {task.dependency_task_ids.length}
+          </span>
+        )}
         {task.domains && task.domains.length > 0 && (
           <span className="text-xs text-zinc-600 ml-auto">
             {task.domains[0]}
@@ -71,25 +125,16 @@ export function TaskCard({ task }: TaskCardProps) {
 
       {/* Footer */}
       <div className="flex items-center justify-between">
+        <div className="text-xs text-zinc-500">{formatDueDate(task.due_at)}</div>
         {/* Assignees */}
         <div className="flex -space-x-2">
-          {task.assignees?.slice(0, 3).map((agent: Agent) => (
+          {task.assignees?.slice(0, 3).map((assignee) => (
             <div
-              key={agent.id}
+              key={assignee.id}
               className="w-6 h-6 rounded-full bg-zinc-700 border-2 border-zinc-800 flex items-center justify-center"
-              title={agent.name}
+              title={assignee.name}
             >
-              {agent.avatar_url ? (
-                <img
-                  src={agent.avatar_url}
-                  alt={agent.name}
-                  className="w-full h-full rounded-full object-cover"
-                />
-              ) : (
-                <span className="text-xs text-zinc-400">
-                  {agent.name.charAt(0)}
-                </span>
-              )}
+              <span className="text-xs">{assignee.emoji}</span>
             </div>
           ))}
           {task.assignees && task.assignees.length > 3 && (
@@ -100,14 +145,13 @@ export function TaskCard({ task }: TaskCardProps) {
             </div>
           )}
         </div>
-
-        {/* Comment count */}
-        {task.comment_count && task.comment_count > 0 && (
-          <span className="text-xs text-zinc-500 flex items-center gap-1">
-            💬 {task.comment_count}
-          </span>
-        )}
       </div>
+
+      {task.active_summary && (
+        <div className="mt-2 text-xs text-zinc-400 truncate">
+          {task.active_summary}
+        </div>
+      )}
     </div>
   );
 }

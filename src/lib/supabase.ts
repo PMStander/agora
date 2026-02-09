@@ -12,58 +12,58 @@ export const isSupabaseConfigured = () => {
   return supabaseUrl !== '' && supabaseKey !== '';
 };
 
-// Real-time subscriptions
-export function subscribeToTasks(callback: (payload: any) => void): RealtimeChannel {
+// ─── Real-time Subscriptions ────────────────────────────────────────────────
+
+export function subscribeToMissions(
+  callback: (payload: any) => void,
+  onStatus?: (status: string) => void
+): RealtimeChannel {
   return supabase
-    .channel('tasks-changes')
+    .channel('missions-changes')
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'tasks' },
+      { event: '*', schema: 'public', table: 'missions' },
       callback
     )
+    .on('system', { event: 'status' }, (payload) => {
+      if (onStatus && payload?.status) onStatus(payload.status);
+    })
     .subscribe();
 }
 
-export function subscribeToComments(taskId: string, callback: (payload: any) => void): RealtimeChannel {
+export function subscribeToMissionLogs(
+  missionId: string,
+  callback: (payload: any) => void
+): RealtimeChannel {
   return supabase
-    .channel(`comments-${taskId}`)
+    .channel(`mission-logs-${missionId}`)
     .on(
       'postgres_changes',
-      { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'comments',
-        filter: `task_id=eq.${taskId}`
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'mission_logs',
+        filter: `mission_id=eq.${missionId}`,
       },
       callback
     )
     .subscribe();
 }
 
-export function subscribeToActivities(callback: (payload: any) => void): RealtimeChannel {
-  return supabase
-    .channel('activities-changes')
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'activities' },
-      callback
-    )
-    .subscribe();
-}
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
-// Helper to log activities
-export async function logActivity(
+export async function logMissionEvent(
+  missionId: string,
   type: string,
-  taskId: string | null,
   message: string,
   agentId?: string,
   metadata?: Record<string, any>
 ) {
-  return supabase.from('activities').insert({
+  return supabase.from('mission_logs').insert({
+    mission_id: missionId,
     type,
-    task_id: taskId,
-    agent_id: agentId,
+    agent_id: agentId ?? null,
     message,
-    metadata,
+    metadata: metadata ?? null,
   });
 }

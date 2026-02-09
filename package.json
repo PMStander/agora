@@ -6,6 +6,16 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:app": "pnpm tauri build",
+    "install:app": "./scripts/install-app.sh",
+    "install:rebuild": "./scripts/install-app.sh --rebuild",
+    "build:install": "pnpm tauri build && ./scripts/install-app.sh",
+    "mission-dispatcher:tick": "node scripts/mission-dispatcher.mjs",
+    "mission-dispatcher:dry": "node scripts/mission-dispatcher.mjs --dry-run",
+    "mission-dispatcher:install": "./scripts/install-mission-dispatcher.sh",
+    "mission-dispatcher:uninstall": "./scripts/uninstall-mission-dispatcher.sh",
+    "mission-proof-requeue:dry": "node scripts/requeue-suspicious-missions.mjs",
+    "mission-proof-requeue:apply": "node scripts/requeue-suspicious-missions.mjs --apply",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -17,6 +27,7 @@
     "@supabase/supabase-js": "^2.95.0",
     "@tanstack/react-query": "^5.90.20",
     "@tauri-apps/plugin-autostart": "^2.5.1",
+    "@tauri-apps/plugin-fs": "^2.4.5",
     "@tauri-apps/plugin-global-shortcut": "^2.3.1",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-process": "^2.3.1",
@@ -26,6 +37,7 @@
     "clsx": "^2.1.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "recharts": "^3.7.0",
     "tailwind-merge": "^3.4.0",
     "zustand": "^5.0.11"
   },

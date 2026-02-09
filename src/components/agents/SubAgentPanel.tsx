@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAgentStore, type Agent } from '../../stores/agents';
+import type { SubAgentRunEvent } from '../../hooks/useOpenClaw';
 import { cn } from '../../lib/utils';
 
 interface SubAgentRun {
@@ -7,16 +8,17 @@ interface SubAgentRun {
   agentId: string;
   agentName: string;
   task: string;
-  status: 'running' | 'completed' | 'error';
+  status: 'queued' | 'running' | 'completed' | 'error';
   startTime: Date;
   result?: string;
 }
 
 interface SubAgentPanelProps {
-  onSpawn: (agentId: string, task: string) => Promise<void>;
+  onSpawn: (runId: string, agentId: string, task: string) => Promise<void>;
+  onRunEvent: (handler: (event: SubAgentRunEvent) => void) => () => void;
 }
 
-export function SubAgentPanel({ onSpawn }: SubAgentPanelProps) {
+export function SubAgentPanel({ onSpawn, onRunEvent }: SubAgentPanelProps) {
   const { teams } = useAgentStore();
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
@@ -26,6 +28,19 @@ export function SubAgentPanel({ onSpawn }: SubAgentPanelProps) {
 
   // Flatten all agents for selection
   const allAgents = teams.flatMap(t => t.agents);
+
+  useEffect(() => {
+    return onRunEvent((event) => {
+      setRuns((prev) => prev.map((run) => {
+        if (run.id !== event.runId) return run;
+        return {
+          ...run,
+          status: event.state,
+          result: event.text ?? event.error ?? run.result,
+        };
+      }));
+    });
+  }, [onRunEvent]);
 
   const handleSpawn = async () => {
     if (!selectedAgent || !task.trim()) return;
@@ -39,17 +54,14 @@ export function SubAgentPanel({ onSpawn }: SubAgentPanelProps) {
       agentId: selectedAgent.id,
       agentName: selectedAgent.name,
       task: task.trim(),
-      status: 'running',
+      status: 'queued',
       startTime: new Date(),
     };
     setRuns(prev => [newRun, ...prev]);
     
     try {
-      await onSpawn(selectedAgent.id, task.trim());
-      setRuns(prev => prev.map(r => 
-        r.id === runId ? { ...r, status: 'completed' as const } : r
-      ));
-    } catch (error) {
+      await onSpawn(runId, selectedAgent.id, task.trim());
+    } catch {
       setRuns(prev => prev.map(r => 
         r.id === runId ? { ...r, status: 'error' as const } : r
       ));
@@ -69,9 +81,9 @@ export function SubAgentPanel({ onSpawn }: SubAgentPanelProps) {
         <span className="flex items-center gap-2">
           <span>⚡</span>
           <span>Sub-Agents</span>
-          {runs.filter(r => r.status === 'running').length > 0 && (
+          {runs.filter(r => r.status === 'queued' || r.status === 'running').length > 0 && (
             <span className="px-1.5 py-0.5 text-xs bg-primary/20 text-primary rounded-full">
-              {runs.filter(r => r.status === 'running').length} running
+              {runs.filter(r => r.status === 'queued' || r.status === 'running').length} active
             </span>
           )}
         </span>
@@ -114,7 +126,7 @@ export function SubAgentPanel({ onSpawn }: SubAgentPanelProps) {
                 type="text"
                 value={task}
                 onChange={(e) => setTask(e.target.value)}
-                placeholder="Task for sub-agent..."
+                placeholder="Mission for sub-agent..."
                 className="flex-1 px-3 py-2 rounded-lg bg-muted text-sm border-none focus:outline-none focus:ring-2 focus:ring-primary"
                 onKeyDown={(e) => e.key === 'Enter' && handleSpawn()}
               />
@@ -127,6 +139,9 @@ export function SubAgentPanel({ onSpawn }: SubAgentPanelProps) {
               </button>
             </div>
           </div>
+          <p className="text-[11px] text-muted-foreground">
+            Status updates stream from agent run events.
+          </p>
 
           {/* Active Runs */}
           {runs.length > 0 && (
@@ -142,6 +157,7 @@ export function SubAgentPanel({ onSpawn }: SubAgentPanelProps) {
                   >
                     <span className={cn(
                       'w-2 h-2 rounded-full',
+                      run.status === 'queued' && 'bg-blue-500',
                       run.status === 'running' && 'bg-yellow-500 animate-pulse',
                       run.status === 'completed' && 'bg-green-500',
                       run.status === 'error' && 'bg-red-500'
@@ -149,6 +165,9 @@ export function SubAgentPanel({ onSpawn }: SubAgentPanelProps) {
                     <span className="font-medium">{run.agentName}</span>
                     <span className="text-muted-foreground truncate flex-1">
                       {run.task}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {run.status}
                     </span>
                   </div>
                 ))}

@@ -10,15 +10,64 @@ import {
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { useState } from 'react';
 import { KanbanColumn } from './KanbanColumn';
-import { TaskCard } from './TaskCard';
+import { MissionCard } from './MissionCard';
 import { useMissionControl } from '../../hooks/useMissionControl';
-import { useFilteredTasks } from '../../stores/missionControl';
-import { TASK_COLUMNS, type Task, type TaskStatus } from '../../types/supabase';
+import { useFilteredMissions } from '../../stores/missionControl';
+import type { Mission, MissionStatus } from '../../types/supabase';
+
+type BoardColumnId =
+  | 'planning'
+  | 'queued'
+  | 'ready'
+  | 'in_progress'
+  | 'pending_review'
+  | 'done'
+  | 'failed';
+
+const BOARD_COLUMNS: Array<{ id: BoardColumnId; title: string; color: string }> = [
+  { id: 'planning', title: '📝 Planning', color: 'purple' },
+  { id: 'queued', title: '📅 Queued', color: 'zinc' },
+  { id: 'ready', title: '🧩 Ready', color: 'blue' },
+  { id: 'in_progress', title: '🔄 In Progress', color: 'amber' },
+  { id: 'pending_review', title: '👁️ Review', color: 'orange' },
+  { id: 'done', title: '✅ Done', color: 'green' },
+  { id: 'failed', title: '❌ Failed', color: 'red' },
+];
+
+const COLUMN_TO_STATUS: Partial<Record<BoardColumnId, MissionStatus>> = {
+  queued: 'scheduled',
+  ready: 'assigned',
+  in_progress: 'in_progress',
+  pending_review: 'pending_review',
+  done: 'done',
+  failed: 'failed',
+};
+
+function isPlanningMission(mission: Mission): boolean {
+  const phase = mission.mission_phase || 'tasks';
+  const phaseStatus = mission.mission_phase_status || 'approved';
+  return phase !== 'tasks' || phaseStatus !== 'approved';
+}
+
+function getMissionColumnId(mission: Mission, nowMs: number): BoardColumnId {
+  if (isPlanningMission(mission)) return 'planning';
+
+  const runtimeStatus = mission.mission_status || mission.status;
+  if (runtimeStatus === 'in_progress') return 'in_progress';
+  if (runtimeStatus === 'pending_review') return 'pending_review';
+  if (runtimeStatus === 'done') return 'done';
+  if (runtimeStatus === 'failed') return 'failed';
+  if (runtimeStatus === 'assigned' || runtimeStatus === 'revision') return 'ready';
+
+  const dueMs = Date.parse(mission.scheduled_at || '');
+  if (Number.isFinite(dueMs) && dueMs <= nowMs) return 'ready';
+  return 'queued';
+}
 
 export function KanbanBoard() {
-  const { moveTask } = useMissionControl();
-  const tasks = useFilteredTasks();
-  const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const { moveMission } = useMissionControl();
+  const missions = useFilteredMissions();
+  const [activeMission, setActiveMission] = useState<Mission | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -29,30 +78,44 @@ export function KanbanBoard() {
   );
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    const task = tasks.find((t) => t.id === event.active.id);
-    if (task) setActiveTask(task);
-  }, [tasks]);
+    const mission = missions.find((m) => m.id === event.active.id);
+    if (mission) setActiveMission(mission);
+  }, [missions]);
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
-    setActiveTask(null);
+    setActiveMission(null);
     
     const { active, over } = event;
     if (!over) return;
 
-    const taskId = active.id as string;
-    const newStatus = over.id as TaskStatus;
+    const missionId = active.id as string;
+    const newColumnId = over.id as BoardColumnId;
     
-    // Check if dropped on a column
-    if (TASK_COLUMNS.some((col) => col.id === newStatus)) {
-      const task = tasks.find((t) => t.id === taskId);
-      if (task && task.status !== newStatus) {
-        moveTask(taskId, newStatus);
-      }
+    // Planning missions should be handled through the planning workflow panel.
+    if (!BOARD_COLUMNS.some((col) => col.id === newColumnId) || newColumnId === 'planning') {
+      return;
     }
-  }, [tasks, moveTask]);
 
-  const getTasksByStatus = (status: TaskStatus) => {
-    return tasks.filter((t) => t.status === status);
+    const mission = missions.find((entry) => entry.id === missionId);
+    if (!mission) return;
+
+    if (isPlanningMission(mission)) return;
+
+    const currentColumn = getMissionColumnId(mission, Date.now());
+    if (currentColumn === newColumnId) return;
+
+    const newStatus = COLUMN_TO_STATUS[newColumnId];
+    if (!newStatus) return;
+
+    const currentStatus = mission.mission_status || mission.status;
+    if (currentStatus !== newStatus) {
+      moveMission(missionId, newStatus);
+    }
+  }, [missions, moveMission]);
+
+  const getMissionsByColumn = (columnId: BoardColumnId) => {
+    const nowMs = Date.now();
+    return missions.filter((mission) => getMissionColumnId(mission, nowMs) === columnId);
   };
 
   return (
@@ -63,19 +126,19 @@ export function KanbanBoard() {
       onDragEnd={handleDragEnd}
     >
       <div className="flex gap-4 h-full overflow-x-auto pb-4 px-4">
-        {TASK_COLUMNS.map((column) => (
+        {BOARD_COLUMNS.map((column) => (
           <KanbanColumn
             key={column.id}
             id={column.id}
             title={column.title}
             color={column.color}
-            tasks={getTasksByStatus(column.id)}
+            missions={getMissionsByColumn(column.id)}
           />
         ))}
       </div>
 
       <DragOverlay>
-        {activeTask && <TaskCard task={activeTask} />}
+        {activeMission && <MissionCard mission={activeMission} />}
       </DragOverlay>
     </DndContext>
   );

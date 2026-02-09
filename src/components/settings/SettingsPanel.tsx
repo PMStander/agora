@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSettingsStore, type Theme } from '../../stores/settings';
 import { useTheme } from '../../hooks/useTheme';
 import { UpdateChecker } from './UpdateChecker';
+import { PayPalSetup } from '../payments/PayPalSetup';
 import {
   isPermissionGranted,
   requestPermission,
@@ -181,7 +182,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 <>
                   <div className="flex items-center justify-between pl-4">
                     <div>
-                      <p className="font-medium text-foreground">Agent Task Complete</p>
+                      <p className="font-medium text-foreground">Agent Mission Complete</p>
                       <p className="text-sm text-muted-foreground">Notify when sub-agents finish</p>
                     </div>
                     <Toggle
@@ -251,6 +252,14 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 />
               </div>
             </div>
+          </section>
+
+          {/* Payments */}
+          <section>
+            <h3 className="text-lg font-medium text-foreground mb-4 flex items-center gap-2">
+              <span className="text-xl">💳</span> Payments (PayPal)
+            </h3>
+            <PayPalSetup />
           </section>
 
           {/* Voice */}

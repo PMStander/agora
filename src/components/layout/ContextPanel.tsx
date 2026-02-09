@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useActiveAgent } from '../../stores/agents';
 import { useA2UI } from '../../hooks/useA2UI';
-import { A2UIRenderer } from '../a2ui/A2UIRenderer';
+import { A2UIRenderer, type A2UIActionEvent } from '../a2ui/A2UIRenderer';
 import { A2UIDemo } from '../a2ui/A2UIDemo';
 import { cn } from '../../lib/utils';
+import { useOpenClaw } from '../../hooks/useOpenClaw';
 import {
   useGatewayConfig,
   THINKING_LEVELS,
@@ -11,6 +12,8 @@ import {
   buildPrimary,
   type ThinkingLevel,
 } from '../../hooks/useGatewayConfig';
+import { HandoffPanel } from '../context/HandoffPanel';
+import { UpcomingEvents } from '../calendar/UpcomingEvents';
 
 interface ContextPanelProps {
   isOpen: boolean;
@@ -22,10 +25,12 @@ type PanelMode = 'agent-info' | 'tools' | 'a2ui';
 // ── Model Section ──────────────────────────────────────────────────────
 
 function ModelSection() {
+  const activeAgent = useActiveAgent();
   const {
     loading, patching, primary, providerId, modelId, thinkingLevel,
-    catalog, setModel, setThinking,
-  } = useGatewayConfig();
+    catalog, setModel, setThinking, canValidateModels, isModelSupported, isProviderSupported,
+    activeAgentConfig,
+  } = useGatewayConfig({ agentId: activeAgent?.id });
 
   const [editing, setEditing] = useState(false);
   const [selProvider, setSelProvider] = useState(providerId);
@@ -44,23 +49,35 @@ function ModelSection() {
 
   const currentProvider = catalog.find(p => p.id === providerId);
   const selectedProvider = catalog.find(p => p.id === selProvider);
+  const currentModelAvailable = isModelSupported(primary);
 
   // When provider changes, pick first model of that provider
   const handleProviderChange = (newProvider: string) => {
     setSelProvider(newProvider);
     const prov = catalog.find(p => p.id === newProvider);
     if (prov?.models.length) {
-      setSelModel(prov.models[0].id);
+      const nextModel = prov.models.find((m) => {
+        if (!canValidateModels) return true;
+        return isModelSupported(buildPrimary(newProvider, m.id));
+      })?.id ?? prov.models[0].id;
+      setSelModel(nextModel);
     }
   };
 
   const handleSave = async () => {
     setSaveError(null);
+    console.log('[ModelSection] handleSave called with:', { selProvider, selModel, selThinking });
     try {
       const newPrimary = buildPrimary(selProvider, selModel);
+      console.log('[ModelSection] Built primary:', newPrimary, 'current primary:', primary);
+      if (canValidateModels && !isModelSupported(newPrimary)) {
+        setSaveError(`Model not available in current OpenClaw runtime: ${newPrimary}`);
+        return;
+      }
       // Apply model and thinking in one go
       if (newPrimary !== primary) {
-        await setModel(newPrimary);
+        console.log('[ModelSection] Calling setModel with:', newPrimary, 'for agent:', activeAgent?.id);
+        await setModel(newPrimary, activeAgent?.id);
       }
       if (selThinking !== thinkingLevel) {
         await setThinking(selThinking);
@@ -91,7 +108,9 @@ function ModelSection() {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <div className="text-xs text-muted-foreground uppercase tracking-wider">Model</div>
+        <div className="text-xs text-muted-foreground uppercase tracking-wider">
+          Model{activeAgent ? ` · ${activeAgent.id}` : ''}
+        </div>
         {!editing && (
           <button
             onClick={() => setEditing(true)}
@@ -128,6 +147,16 @@ function ModelSection() {
               <span className="text-muted-foreground ml-auto">{currentProvider.note}</span>
             )}
           </div>
+          {!activeAgentConfig?.model && (
+            <div className="text-xs text-zinc-400">
+              Using global default model for this agent.
+            </div>
+          )}
+          {canValidateModels && !currentModelAvailable && (
+            <div className="text-xs text-red-400">
+              Current model unavailable in this gateway runtime.
+            </div>
+          )}
         </div>
       ) : (
         /* ── Edit mode ── */
@@ -138,15 +167,15 @@ function ModelSection() {
             <select
               value={selProvider}
               onChange={(e) => handleProviderChange(e.target.value)}
-              className="w-full text-sm bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-zinc-200 focus:border-amber-500 focus:outline-none"
-            >
-              {catalog.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.icon} {p.label}{p.note ? ` (${p.note})` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+            className="w-full text-sm bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-zinc-200 focus:border-amber-500 focus:outline-none"
+          >
+            {catalog.map(p => (
+              <option key={p.id} value={p.id} disabled={canValidateModels && !isProviderSupported(p.id)}>
+                {p.icon} {p.label}{p.note ? ` (${p.note})` : ''}{canValidateModels && !isProviderSupported(p.id) ? ' (Unavailable)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
 
           {/* Model */}
           <div>
@@ -156,9 +185,16 @@ function ModelSection() {
               onChange={(e) => setSelModel(e.target.value)}
               className="w-full text-sm bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-zinc-200 focus:border-amber-500 focus:outline-none"
             >
-              {selectedProvider?.models.map(m => (
-                <option key={m.id} value={m.id}>{m.label}</option>
-              ))}
+              {selectedProvider?.models.map(m => {
+                const candidatePrimary = buildPrimary(selProvider, m.id);
+                const available = isModelSupported(candidatePrimary);
+                const disabled = canValidateModels && !available;
+                return (
+                  <option key={m.id} value={m.id} disabled={disabled}>
+                    {m.label}{disabled ? ' (Unavailable)' : ''}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -186,6 +222,9 @@ function ModelSection() {
           {/* Preview */}
           <div className="text-xs text-muted-foreground border-t border-zinc-700 pt-2">
             <span className="font-mono">{buildPrimary(selProvider, selModel)}</span>
+            {canValidateModels && !isModelSupported(buildPrimary(selProvider, selModel)) && (
+              <span className="ml-2 text-red-400">not available on this gateway</span>
+            )}
           </div>
 
           {saveError && (
@@ -222,13 +261,60 @@ function ModelSection() {
 // ── Skills Section ─────────────────────────────────────────────────────
 
 function SkillsSection() {
-  const { allSkills, skillEntries, skillsFromGateway, loading } = useGatewayConfig();
+  const activeAgent = useActiveAgent();
+  const {
+    skillEntries, configuredSkills, agentScopedGatewaySkills, activeAgentConfig,
+    allSkills, loading, patching, setSkills
+  } = useGatewayConfig({ agentId: activeAgent?.id });
   const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Use gateway skills if available (richer data), fall back to config-derived list
-  const displaySkills = skillsFromGateway.length > 0
-    ? skillsFromGateway.filter(s => s.eligible !== false)
-    : allSkills.map(id => ({ key: id, name: SKILL_CATALOG[id]?.label }));
+  const hasExplicitAgentSkills = !!activeAgentConfig && Array.isArray(activeAgentConfig.skills);
+  const effectiveConfiguredSkills = hasExplicitAgentSkills
+    ? configuredSkills
+    : (configuredSkills.length > 0 ? configuredSkills : agentScopedGatewaySkills);
+
+  // Show explicit/inferred configured skills first.
+  // Only fall back to global skill entries when no per-agent signal exists at all.
+  const displaySkills = effectiveConfiguredSkills.length > 0
+    ? effectiveConfiguredSkills.map(id => ({ key: id, name: SKILL_CATALOG[id]?.label }))
+    : hasExplicitAgentSkills
+    ? []
+    : skillEntries.map(id => ({ key: id, name: SKILL_CATALOG[id]?.label }));
+  const configuredSkillSet = new Set(effectiveConfiguredSkills);
+
+  // Initialize selected skills when entering edit mode
+  useEffect(() => {
+    if (editing) {
+      setSelectedSkills(new Set(effectiveConfiguredSkills));
+      setSaveError(null);
+    }
+  }, [editing, effectiveConfiguredSkills]);
+
+  const handleToggleSkill = (skillId: string) => {
+    setSelectedSkills(prev => {
+      const next = new Set(prev);
+      if (next.has(skillId)) {
+        next.delete(skillId);
+      } else {
+        next.add(skillId);
+      }
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    setSaveError(null);
+    try {
+      const skillsArray = Array.from(selectedSkills);
+      await setSkills(skillsArray, activeAgent?.id);
+      setEditing(false);
+    } catch (err) {
+      setSaveError(String(err));
+    }
+  };
 
   if (loading && displaySkills.length === 0) {
     return (
@@ -241,10 +327,95 @@ function SkillsSection() {
     );
   }
 
+  // Edit mode
+  if (editing) {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-muted-foreground uppercase tracking-wider">
+            Edit Skills{activeAgent ? ` · ${activeAgent.id}` : ''}
+          </div>
+        </div>
+
+        <div className="p-3 rounded-lg bg-muted/50 border border-zinc-700 space-y-3">
+          <div className="text-xs text-muted-foreground mb-2">
+            Click skills to toggle them on/off for this agent:
+          </div>
+
+          <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+            {allSkills.map(skillId => {
+              const meta = SKILL_CATALOG[skillId];
+              const isSelected = selectedSkills.has(skillId);
+              return (
+                <button
+                  key={skillId}
+                  onClick={() => handleToggleSkill(skillId)}
+                  className={cn(
+                    'inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors',
+                    isSelected
+                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30'
+                      : 'bg-zinc-800 text-zinc-500 border border-zinc-700 hover:bg-zinc-700 hover:text-zinc-400'
+                  )}
+                  title={meta?.label ?? skillId}
+                >
+                  <span>{meta?.icon ?? '🔧'}</span>
+                  <span className="truncate max-w-[100px]">{meta?.label ?? skillId}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="text-xs text-muted-foreground border-t border-zinc-700 pt-2">
+            Selected: {selectedSkills.size} skills
+          </div>
+
+          {saveError && (
+            <div className="text-xs text-red-400">{saveError}</div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={patching}
+              className={cn(
+                'flex-1 px-3 py-1.5 text-xs font-medium rounded transition-colors',
+                patching
+                  ? 'bg-amber-500/10 text-amber-400/50 cursor-wait'
+                  : 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
+              )}
+            >
+              {patching ? 'Saving…' : 'Save Skills'}
+            </button>
+            <button
+              onClick={() => { setEditing(false); setSaveError(null); }}
+              className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Display mode
   if (displaySkills.length === 0) {
     return (
-      <div className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
-        No skills configured
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-muted-foreground uppercase tracking-wider">
+            Skills{activeAgent ? ` · ${activeAgent.id}` : ''}
+          </div>
+          <button
+            onClick={() => setEditing(true)}
+            className="text-xs text-amber-400 hover:text-amber-300 transition-colors"
+          >
+            Edit
+          </button>
+        </div>
+        <div className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
+          No agent-scoped skills configured yet
+        </div>
       </div>
     );
   }
@@ -256,9 +427,15 @@ function SkillsSection() {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div className="text-xs text-muted-foreground uppercase tracking-wider">
-          Skills
+          Skills{activeAgent ? ` · ${activeAgent.id}` : ''}
           <span className="ml-1.5 text-zinc-500">({displaySkills.length})</span>
         </div>
+        <button
+          onClick={() => setEditing(true)}
+          className="text-xs text-amber-400 hover:text-amber-300 transition-colors"
+        >
+          Edit
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-1.5">
@@ -266,7 +443,7 @@ function SkillsSection() {
           const skillId = typeof skill === 'string' ? skill : skill.key;
           const skillName = typeof skill === 'string' ? skill : (skill.name || skill.key);
           const meta = SKILL_CATALOG[skillId];
-          const isConfigured = skillEntries.includes(skillId);
+          const isConfigured = configuredSkillSet.has(skillId) || skillEntries.includes(skillId);
           return (
             <span
               key={skillId}
@@ -301,8 +478,101 @@ function SkillsSection() {
 
 export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
   const activeAgent = useActiveAgent();
-  const { isConnected: a2uiConnected, isEnabled: a2uiEnabled, activeSurface, surfaces, enable: enableA2UI } = useA2UI();
+  const { sendMessage, isConnected: gatewayConnected } = useOpenClaw();
+  const {
+    isConnected: a2uiConnected,
+    isEnabled: a2uiEnabled,
+    connectionMode: a2uiConnectionMode,
+    streamEndpoint: a2uiStreamEndpoint,
+    activeSurface,
+    surfaces,
+    setActiveSurfaceId,
+    pushMessages,
+    enable: enableA2UI,
+  } = useA2UI(true);
   const [mode, setMode] = useState<PanelMode>('agent-info');
+  const [lastA2UIAction, setLastA2UIAction] = useState<string | null>(null);
+  const [a2uiActionError, setA2UIActionError] = useState<string | null>(null);
+
+  const handleA2UIAction = async (event: A2UIActionEvent) => {
+    const payload = event.payload ? JSON.stringify(event.payload) : '{}';
+    setLastA2UIAction(`${event.action} @ ${event.surfaceId}`);
+    setA2UIActionError(null);
+
+    if (!activeAgent || !gatewayConnected) return;
+
+    const actionInstruction = [
+      'A2UI action event received.',
+      `Surface: ${event.surfaceId}`,
+      `Component: ${event.componentId}`,
+      `Action: ${event.action}`,
+      `Payload: ${payload}`,
+      'Apply this action and continue the workflow.',
+    ].join('\n');
+
+    try {
+      await sendMessage(actionInstruction, activeAgent.id);
+    } catch (err) {
+      setA2UIActionError(String(err));
+    }
+  };
+
+  const injectTestA2UISurface = useCallback(() => {
+    const surfaceId = `demo-surface-${Date.now()}`;
+
+    pushMessages([
+      {
+        type: 'dataModelUpdate',
+        surfaceId,
+        data: {
+          summary: 'Mission launch console ready. This is a synthetic A2UI payload for frontend verification.',
+          countdownLabel: 'Mission launch (1-minute loop)',
+          secondsElapsed: 24,
+          kpis: [
+            { label: 'Queued', value: '6', delta: '+2', tone: 'warning' },
+            { label: 'In Progress', value: '3', delta: '+1', tone: 'info' },
+            { label: 'Completed', value: '19', delta: '+4', tone: 'success' },
+          ],
+          agenda: [
+            { time: 'Now', title: 'Validate due missions', subtitle: 'Scheduler pass', status: 'Running' },
+            { time: '+1m', title: 'Dispatch ready mission', subtitle: 'Primary agent assignment', status: 'Pending' },
+            { time: '+2m', title: 'Review chain checkpoint', subtitle: 'Auto-review agent', status: 'Pending' },
+          ],
+          actions: [
+            { label: 'Run Due Scan', action: 'run_due_scan', variant: 'primary', payload: { source: 'a2ui-test' } },
+            { label: 'Open Mission Control', action: 'open_mission_control', variant: 'secondary' },
+            { label: 'Escalate Critical', action: 'escalate_critical', variant: 'danger' },
+          ],
+        },
+      },
+      {
+        type: 'surfaceUpdate',
+        surfaceId,
+        components: [
+          { id: 'root', type: 'Column', children: ['header', 'kpis', 'agenda-card', 'actions-card'] },
+          { id: 'header', type: 'Card', props: { title: 'A2UI Test Surface' }, children: ['summary-text', 'launch-progress'] },
+          { id: 'summary-text', type: 'Text', props: { text: '{{summary}}' } },
+          { id: 'launch-progress', type: 'Progress', props: { label: '{{countdownLabel}}', value: '{{secondsElapsed}}', max: 60 } },
+          { id: 'kpis', type: 'KpiGrid', props: { items: '{{kpis}}', columns: 3 } },
+          { id: 'agenda-card', type: 'Card', props: { title: 'Mission Timeline' }, children: ['agenda-list'] },
+          { id: 'agenda-list', type: 'Agenda', props: { items: '{{agenda}}' } },
+          { id: 'actions-card', type: 'Card', props: { title: 'Quick Actions' }, children: ['action-bar'] },
+          { id: 'action-bar', type: 'ActionBar', props: { actions: '{{actions}}' } },
+        ],
+      },
+      {
+        type: 'beginRendering',
+        surfaceId,
+        rootId: 'root',
+        catalog: 'agora-test',
+      },
+    ]);
+
+    setActiveSurfaceId(surfaceId);
+    setLastA2UIAction(`test-surface @ ${surfaceId}`);
+    setA2UIActionError(null);
+    setMode('a2ui');
+  }, [pushMessages, setActiveSurfaceId]);
 
   // Auto-switch to A2UI when a surface is available
   useEffect(() => {
@@ -444,6 +714,19 @@ export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
             <div className="border-t border-border pt-4">
               <SkillsSection />
             </div>
+
+            {/* Handoffs */}
+            <div className="border-t border-border pt-4">
+              <HandoffPanel />
+            </div>
+
+            {/* Upcoming Events */}
+            <div className="border-t border-border pt-4">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+                Upcoming Events
+              </div>
+              <UpcomingEvents limit={5} />
+            </div>
           </div>
         )}
 
@@ -459,7 +742,7 @@ export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
               {[
                 { icon: '📊', label: 'Charts', desc: 'Data visualization' },
                 { icon: '📝', label: 'Forms', desc: 'Data input' },
-                { icon: '📋', label: 'Tasks', desc: 'Kanban board' },
+                { icon: '📋', label: 'Missions', desc: 'Kanban board' },
                 { icon: '📁', label: 'Files', desc: 'Documents' },
                 { icon: '🔗', label: 'Links', desc: 'Resources' },
                 { icon: '⏱️', label: 'Timer', desc: 'Pomodoro' },
@@ -495,13 +778,26 @@ export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
                   a2uiConnected ? 'bg-green-500' : a2uiEnabled ? 'bg-yellow-500 animate-pulse' : 'bg-muted-foreground'
                 )} />
                 <span>
-                  {a2uiConnected ? 'Connected to Canvas' : a2uiEnabled ? 'Connecting...' : 'Canvas Disabled'}
+                  {a2uiConnected
+                    ? (a2uiConnectionMode === 'stream' ? 'Connected (Live Stream)' : 'Connected (Gateway Events)')
+                    : a2uiEnabled
+                    ? 'Connecting...'
+                    : 'Canvas Disabled'}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Port 18793 • {surfaces.size} surface(s)
+                {a2uiConnectionMode === 'stream' && a2uiStreamEndpoint
+                  ? `Stream: ${a2uiStreamEndpoint}`
+                  : 'Stream: not available (using gateway events)'} • {surfaces.size} surface(s)
               </p>
             </div>
+
+            <button
+              onClick={injectTestA2UISurface}
+              className="w-full px-3 py-2 rounded-lg bg-amber-500/20 text-amber-300 text-sm font-medium hover:bg-amber-500/30 transition-colors"
+            >
+              Inject Test A2UI Surface
+            </button>
 
             {/* Render active surface */}
             {activeSurface ? (
@@ -509,7 +805,7 @@ export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
                 <div className="text-xs text-muted-foreground uppercase tracking-wider">
                   Surface: {activeSurface.id}
                 </div>
-                <A2UIRenderer surface={activeSurface} />
+                <A2UIRenderer surface={activeSurface} onAction={handleA2UIAction} />
               </div>
             ) : (
               <div className="text-center py-8">
@@ -518,6 +814,17 @@ export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
                 <p className="text-xs text-muted-foreground mt-1">
                   Agent-generated UI will appear here
                 </p>
+              </div>
+            )}
+
+            {(lastA2UIAction || a2uiActionError) && (
+              <div className="p-2 rounded border border-zinc-700 bg-zinc-900/60 text-xs space-y-1">
+                {lastA2UIAction && (
+                  <div className="text-zinc-300">Last action: {lastA2UIAction}</div>
+                )}
+                {a2uiActionError && (
+                  <div className="text-red-300">Action dispatch failed: {a2uiActionError}</div>
+                )}
               </div>
             )}
 
@@ -530,7 +837,7 @@ export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
                 {Array.from(surfaces.keys()).map(id => (
                   <button
                     key={id}
-                    onClick={() => {/* setActiveSurfaceId(id) */}}
+                    onClick={() => setActiveSurfaceId(id)}
                     className={cn(
                       'w-full px-2 py-1 text-left text-sm rounded',
                       id === activeSurface?.id ? 'bg-primary/20 text-primary' : 'hover:bg-muted'

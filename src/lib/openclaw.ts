@@ -165,5 +165,5 @@ export class OpenClawClient {
 export const defaultConfig: OpenClawConfig = {
   host: '127.0.0.1',
   port: 18789,
-  token: import.meta.env.VITE_OPENCLAW_TOKEN,
+  token: import.meta.env.VITE_OPENCLAW_GATEWAY_TOKEN || import.meta.env.VITE_OPENCLAW_TOKEN,
 };

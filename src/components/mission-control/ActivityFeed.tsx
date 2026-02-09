@@ -11,6 +11,37 @@ const activityIcons: Record<string, string> = {
   comment_added: '💬',
   agent_assigned: '👤',
   task_completed: '✅',
+  task_started: '🚀',
+  task_failed: '❌',
+  task_review_started: '👁️',
+  review_approved: '✅',
+  review_revision_requested: '🔁',
+  task_recovered: '♻️',
+  statement_drafting: '🧠',
+  statement_ready: '📄',
+  statement_revised: '✍️',
+  statement_decomposed: '🧩',
+  review_started: '📊',
+  review_finalized: '📋',
+  level_changed: '⬆️',
+  feedback_posted: '💡',
+  guardrail_violation: '🛡️',
+  level_promoted: '⬆️',
+  level_demoted: '⬇️',
+  permission_denied: '🚫',
+  connection_restored: '🔗',
+  connection_timeout: '⏱️',
+  mission_completed: '🎉',
+  mission_failed: '💥',
+  review_redo_requested: '🔄',
+  task_blocked: '⛔',
+  // Context & Memory system
+  handoff_requested: '🤝',
+  handoff_completed: '✅',
+  context_updated: '📝',
+  insight_flagged: '🔍',
+  memory_promoted: '🧠',
+  daily_note_added: '📓',
 };
 
 function formatTime(dateString: string): string {
@@ -62,7 +93,7 @@ export function ActivityFeed({ limit = 10 }: ActivityFeedProps) {
     return (
       <div className="text-center text-zinc-600 py-8">
         <p className="text-sm">No activity yet</p>
-        <p className="text-xs mt-1">Create a task to get started</p>
+        <p className="text-xs mt-1">Create a mission to get started</p>
       </div>
     );
   }

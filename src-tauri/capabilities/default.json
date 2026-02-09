@@ -26,6 +26,14 @@
     "updater:allow-check",
     "updater:allow-download-and-install",
     "process:allow-restart",
-    "process:allow-exit"
+    "process:allow-exit",
+    "fs:default",
+    "fs:allow-read-text-file",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "/Users/peetstander/.openclaw/workspace/agents/**" }
+      ]
+    }
   ]
 }
