@@ -262,6 +262,26 @@ export function usePayments() {
             invoicingStore.updateInvoice(paymentLink.invoice_id, updates as any);
           }
 
+          // Auto-sync: create a financial_transaction for this income
+          if (payment) {
+            const { error: ftError } = await supabase
+              .from('financial_transactions')
+              .insert({
+                transaction_type: 'income',
+                status: 'completed',
+                amount: result.captureAmount,
+                currency: paymentLink.currency || 'USD',
+                invoice_payment_id: (payment as any).id,
+                invoice_id: paymentLink.invoice_id,
+                description: `PayPal payment for Invoice${invoice ? ` ${invoice.invoice_number}` : ''}`,
+                reference_number: paymentLink.external_id,
+                transaction_date: new Date().toISOString(),
+              });
+            if (ftError) {
+              console.error('[Payments] Error creating financial transaction:', ftError);
+            }
+          }
+
           return true;
         }
 

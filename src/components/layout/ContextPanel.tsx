@@ -305,7 +305,8 @@ function SkillsSection() {
       setSelectedSkills(new Set(effectiveConfiguredSkills));
       setSaveError(null);
     }
-  }, [editing, effectiveConfiguredSkills]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing]);
 
   const handleToggleSkill = (skillId: string) => {
     setSelectedSkills(prev => {

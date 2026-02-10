@@ -762,6 +762,8 @@ export function useGatewayConfig(options: UseGatewayConfigOptions = {}) {
     ...skillEntries,
     ...(availableSkills ?? []),
     ...gatewaySkillKeys,
+    ...configuredSkills,
+    ...Object.keys(SKILL_CATALOG),
   ])).sort();
 
   return {

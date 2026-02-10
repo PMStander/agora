@@ -4,6 +4,7 @@ import { useOpenClaw } from '../../hooks/useOpenClaw';
 import { cn } from '../../lib/utils';
 import { uploadChatAttachment } from '../../lib/storage';
 import { useSlashCommandsStore } from '../../stores/slashCommands';
+import { ProjectContextSelector } from './ProjectContextSelector';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant' | 'system';
@@ -344,7 +345,9 @@ export function ChatPanel() {
                 {activeAgent.persona} · {activeAgent.role}
               </p>
             </div>
-            <div className="ml-auto flex items-center gap-3">
+            <div className="ml-auto flex items-center gap-2">
+              {/* Project Context Selector */}
+              <ProjectContextSelector />
               {/* Clear Context Button */}
               {messages.length > 0 && (
                 <button

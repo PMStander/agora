@@ -3,6 +3,9 @@ import { openclawClient, type OpenClawMessage, type ConnectionStatus } from '../
 import { useAgentStore } from '../stores/agents';
 import { recallContextForAgent } from '../lib/memoryIntelligence/semanticRecall';
 import { storeEmbedding } from '../lib/memoryIntelligence/embeddingService';
+import { extractHandoffIntent, executeHandoffIntent, buildAgentRoster, HANDOFF_SYSTEM_PROMPT } from '../lib/handoffExecution';
+import { buildProjectContextInjection } from '../lib/projectContextBuilder';
+import { useProjectsStore } from '../stores/projects';
 
 const SESSION_NAMESPACE = 'skills-v2';
 
@@ -166,6 +169,11 @@ export function useOpenClaw() {
   // Track which agents have had history loaded
   const historyLoadedForRef = useRef<Set<string>>(new Set());
 
+  // Stable ref to sendMessage for use in onMessage handler (avoids circular deps)
+  const sendMessageRef = useRef<(message: string, agentId: string) => Promise<void>>(
+    async () => {},
+  );
+
   const emitSubAgentEvent = useCallback((event: SubAgentRunEvent) => {
     for (const listener of subAgentListenersRef.current) {
       listener(event);
@@ -286,9 +294,13 @@ export function useOpenClaw() {
           const reasoning = extractReasoning(payload.message);
           const rawContent = mergeDeltaBuffer(streamBufferRef.current, text);
           const finalReasoning = mergeDeltaBuffer(thinkingBufferRef.current, reasoning);
+
+          // Extract handoff intent BEFORE stripping A2UI blocks
+          const { cleaned: noHandoff, intent: handoffIntent } = extractHandoffIntent(rawContent);
+
           // Strip embedded A2UI JSON blocks from visible chat text.
           // The A2UI hook extracts these separately from the raw payload.
-          const finalContent = stripA2UIBlocks(rawContent);
+          const finalContent = stripA2UIBlocks(noHandoff);
           updateLastMessage(targetAgent, {
             content: finalContent,
             reasoning: finalReasoning || undefined,
@@ -307,6 +319,13 @@ export function useOpenClaw() {
           if (staleRunTimerRef.current) {
             clearTimeout(staleRunTimerRef.current);
             staleRunTimerRef.current = null;
+          }
+
+          // ── Execute smart handoff if agent requested one ──────────────
+          if (handoffIntent) {
+            executeHandoffIntent(handoffIntent, targetAgent, sendMessageRef.current).catch((err) => {
+              console.error('[useOpenClaw] Handoff execution failed:', err);
+            });
           }
         }
 
@@ -404,6 +423,25 @@ export function useOpenClaw() {
       console.warn('[useOpenClaw] Semantic recall failed (non-blocking):', err);
     }
 
+    // ── Handoff instructions: teach agent about available team members ──
+    const agentRoster = buildAgentRoster();
+    if (agentRoster) {
+      enrichedMessage += `\n\n<handoff_instructions>\n${HANDOFF_SYSTEM_PROMPT}\n\nAvailable agents:\n${agentRoster}\n</handoff_instructions>`;
+    }
+
+    // ── Project context: inject project docs + skills + team ──────────
+    const activeProjectId = useProjectsStore.getState().activeProjectForChat;
+    if (activeProjectId) {
+      try {
+        const projectInjection = await buildProjectContextInjection(activeProjectId, targetAgent);
+        if (projectInjection) {
+          enrichedMessage += `\n\n${projectInjection}`;
+        }
+      } catch (err) {
+        console.warn('[useOpenClaw] Project context injection failed (non-blocking):', err);
+      }
+    }
+
     // ── Auto-embed user message (fire-and-forget) ──────────────────────
     const userMsgId = `user-${idempotencyKey}`;
     storeEmbedding('chat_message', userMsgId, targetAgent, message).catch(() => {});
@@ -463,6 +501,9 @@ export function useOpenClaw() {
       updateLastMessage(targetAgent, { content: 'Error: ' + String(err), reasoning: '' });
     }
   }, [activeAgentId, addMessage, getSessionVersion, setLoading, updateLastMessage]);
+
+  // Keep sendMessageRef in sync so the onMessage handler can trigger handoff sends
+  sendMessageRef.current = sendMessage;
 
   const spawnSubAgent = useCallback(async (runId: string, agentId: string, task: string): Promise<void> => {
     subAgentRunsRef.current.set(runId, { agentId });

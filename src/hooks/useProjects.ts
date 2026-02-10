@@ -81,6 +81,25 @@ export function useProjects() {
       }
       const enriched = { ...project, mission_ids: [] } as Project;
       store.addProject(enriched);
+
+      // Auto-create owner assignment in crm_agent_assignments
+      if (data.owner_agent_id) {
+        supabase
+          .from('crm_agent_assignments')
+          .upsert(
+            {
+              agent_id: data.owner_agent_id,
+              entity_type: 'project',
+              entity_id: project.id,
+              role: 'owner',
+            },
+            { onConflict: 'agent_id,entity_type,entity_id' }
+          )
+          .then(({ error: assignErr }) => {
+            if (assignErr) console.error('[Projects] Owner assignment error:', assignErr);
+          });
+      }
+
       return enriched;
     },
     [store]
@@ -97,6 +116,45 @@ export function useProjects() {
         return;
       }
       store.updateProject(projectId, updates);
+
+      // Sync owner_agent_id change with crm_agent_assignments
+      if ('owner_agent_id' in updates) {
+        const oldProject = store.projects.find((p) => p.id === projectId);
+        const oldOwner = oldProject?.owner_agent_id;
+        const newOwner = updates.owner_agent_id;
+
+        // Remove old owner's 'owner' role (if they had one)
+        if (oldOwner && oldOwner !== newOwner) {
+          supabase
+            .from('crm_agent_assignments')
+            .delete()
+            .eq('agent_id', oldOwner)
+            .eq('entity_type', 'project')
+            .eq('entity_id', projectId)
+            .eq('role', 'owner')
+            .then(({ error: e }) => {
+              if (e) console.error('[Projects] Remove old owner assignment:', e);
+            });
+        }
+
+        // Add new owner
+        if (newOwner) {
+          supabase
+            .from('crm_agent_assignments')
+            .upsert(
+              {
+                agent_id: newOwner,
+                entity_type: 'project',
+                entity_id: projectId,
+                role: 'owner',
+              },
+              { onConflict: 'agent_id,entity_type,entity_id' }
+            )
+            .then(({ error: e }) => {
+              if (e) console.error('[Projects] New owner assignment:', e);
+            });
+        }
+      }
     },
     [store]
   );

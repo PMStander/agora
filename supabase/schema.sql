@@ -862,6 +862,58 @@ DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'crm_agen
 DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE crm_agent_assignments; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ============================================================================
+-- PROJECT AGENT SKILLS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS project_agent_skills (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  agent_id TEXT NOT NULL,
+  skill_key TEXT NOT NULL,
+  skill_type TEXT NOT NULL DEFAULT 'technology'
+    CHECK (skill_type IN ('technology', 'gateway')),
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(project_id, agent_id, skill_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pas_project ON project_agent_skills(project_id);
+CREATE INDEX IF NOT EXISTS idx_pas_agent ON project_agent_skills(agent_id);
+CREATE INDEX IF NOT EXISTS idx_pas_project_agent ON project_agent_skills(project_id, agent_id);
+
+ALTER TABLE project_agent_skills ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'project_agent_skills' AND policyname = 'Allow all on project_agent_skills') THEN CREATE POLICY "Allow all on project_agent_skills" ON project_agent_skills FOR ALL USING (true); END IF; END $$;
+
+DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE project_agent_skills; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ============================================================================
+-- PROJECT CODEBASES
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS project_codebases (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  source_type TEXT NOT NULL DEFAULT 'local'
+    CHECK (source_type IN ('local', 'github', 'gitlab', 'bitbucket', 'url')),
+  path TEXT NOT NULL,
+  branch TEXT,
+  description TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_codebases_project ON project_codebases(project_id);
+
+ALTER TABLE project_codebases ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'project_codebases' AND policyname = 'Allow all on project_codebases') THEN CREATE POLICY "Allow all on project_codebases" ON project_codebases FOR ALL USING (true); END IF; END $$;
+
+DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE project_codebases; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ============================================================================
 -- AGENT MANAGEMENT (Hiring/SOUL, Leveling, Reviews, Context)
 -- ============================================================================
 

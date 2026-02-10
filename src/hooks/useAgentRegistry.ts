@@ -15,7 +15,7 @@ export function useAgentRegistry() {
     supabase
       .from('agents')
       .select(
-        'id, display_name, role, team_id, domains, skills, availability, current_task_id, current_mission_id, level, total_missions_completed, avg_quality_score, response_time_avg_minutes, last_active_at'
+        'id, name, role, team, domains, skills, availability, level, total_missions_completed, avg_quality_score, response_time_avg_minutes, last_active_at'
       )
       .then(({ data, error }) => {
         if (error) {
@@ -24,14 +24,14 @@ export function useAgentRegistry() {
           setAgents(
             data.map((row: any) => ({
               agent_id: row.id,
-              display_name: row.display_name || row.id,
+              display_name: row.name || row.id,
               role: row.role || '',
-              team_id: row.team_id || '',
+              team_id: row.team || '',
               domains: row.domains || [],
               skills: row.skills || [],
               availability: row.availability || 'offline',
-              current_task_id: row.current_task_id || null,
-              current_mission_id: row.current_mission_id || null,
+              current_task_id: null,
+              current_mission_id: null,
               level: row.level || 1,
               total_missions_completed: row.total_missions_completed || 0,
               avg_quality_score: row.avg_quality_score || 0,
@@ -74,14 +74,14 @@ export function useAgentRegistry() {
 
       return (data || []).map((row: any) => ({
         agent_id: row.id,
-        display_name: row.display_name || row.id,
+        display_name: row.name || row.id,
         role: row.role || '',
-        team_id: row.team_id || '',
+        team_id: row.team || '',
         domains: row.domains || [],
         skills: row.skills || [],
         availability: row.availability || 'offline',
-        current_task_id: row.current_task_id || null,
-        current_mission_id: row.current_mission_id || null,
+        current_task_id: null,
+        current_mission_id: null,
         level: row.level || 1,
         total_missions_completed: row.total_missions_completed || 0,
         avg_quality_score: row.avg_quality_score || 0,
@@ -132,14 +132,14 @@ export function useAgentRegistry() {
 
       return {
         agent_id: data.id,
-        display_name: data.display_name || data.id,
+        display_name: data.name || data.id,
         role: data.role || '',
-        team_id: data.team_id || '',
+        team_id: data.team || '',
         domains: data.domains || [],
         skills: data.skills || [],
         availability: data.availability || 'offline',
-        current_task_id: data.current_task_id || null,
-        current_mission_id: data.current_mission_id || null,
+        current_task_id: null,
+        current_mission_id: null,
         level: data.level || 1,
         total_missions_completed: data.total_missions_completed || 0,
         avg_quality_score: data.avg_quality_score || 0,

@@ -17,6 +17,7 @@ import { useAgentStore } from './stores/agents';
 import { useSelectedContact, useSelectedCompany, useSelectedDeal } from './stores/crm';
 import { useSelectedQuote, useSelectedInvoice } from './stores/invoicing';
 import { useSelectedEvent } from './stores/calendar';
+import { useSelectedTransaction } from './stores/financial';
 import { addRetroactiveProof, addRetroactiveProofToAll } from './lib/retroactiveProof';
 import { NotificationBell } from './components/notifications/NotificationBell';
 import { NotificationToast } from './components/notifications/NotificationToast';
@@ -31,6 +32,7 @@ const ContextTab = lazy(() => import('./components/context/ContextTab').then(m =
 const WorkflowsTab = lazy(() => import('./components/workflows/WorkflowsTab').then(m => ({ default: m.WorkflowsTab })));
 const CalendarTab = lazy(() => import('./components/calendar/CalendarTab').then(m => ({ default: m.CalendarTab })));
 const TeamsTab = lazy(() => import('./components/teams/TeamsTab').then(m => ({ default: m.TeamsTab })));
+const MoneyTab = lazy(() => import('./components/financial/MoneyTab').then(m => ({ default: m.MoneyTab })));
 
 // Lazy-load CRM detail panels
 const ContactDetail = lazy(() => import('./components/crm/ContactDetail').then(m => ({ default: m.ContactDetail })));
@@ -40,6 +42,7 @@ const QuoteDetail = lazy(() => import('./components/invoicing/QuoteDetail').then
 const InvoiceDetail = lazy(() => import('./components/invoicing/InvoiceDetail').then(m => ({ default: m.InvoiceDetail })));
 const EventDetail = lazy(() => import('./components/calendar/EventDetail').then(m => ({ default: m.EventDetail })));
 const AgentRoleCard = lazy(() => import('./components/teams/AgentRoleCard').then(m => ({ default: m.AgentRoleCard })));
+const TransactionDetail = lazy(() => import('./components/financial/TransactionDetail').then(m => ({ default: m.TransactionDetail })));
 
 function App() {
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
@@ -56,6 +59,7 @@ function App() {
   const selectedQuote = useSelectedQuote();
   const selectedInvoice = useSelectedInvoice();
   const selectedCalendarEvent = useSelectedEvent();
+  const selectedTransaction = useSelectedTransaction();
   const selectedProfileAgentId = useAgentStore((s) => s.selectedProfileAgentId);
   
   // Initialize theme
@@ -154,7 +158,7 @@ function App() {
       }
       if (e.metaKey && e.key === '0') {
         e.preventDefault();
-        setActiveTab('teams');
+        setActiveTab('money');
       }
     };
 
@@ -222,6 +226,22 @@ function App() {
                 <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
               </svg>
               Teams
+            </button>
+            <button
+              onClick={() => setActiveTab('money')}
+              className={`
+                flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-lg transition-colors
+                ${activeTab === 'money'
+                  ? 'bg-amber-500/20 text-amber-400'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                }
+              `}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <line x1="12" y1="1" x2="12" y2="23"/>
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+              </svg>
+              Money
             </button>
 
             {/* Spacer */}
@@ -459,6 +479,11 @@ function App() {
                 <TeamsTab />
               </Suspense>
             )}
+            {activeTab === 'money' && (
+              <Suspense fallback={<div className="flex items-center justify-center h-full text-zinc-500">Loading Money...</div>}>
+                <MoneyTab />
+              </Suspense>
+            )}
           </div>
         </div>
         
@@ -504,6 +529,10 @@ function App() {
         ) : activeTab === 'crm' && selectedInvoice ? (
           <Suspense fallback={null}>
             <InvoiceDetail onEdit={() => {}} />
+          </Suspense>
+        ) : activeTab === 'money' && selectedTransaction ? (
+          <Suspense fallback={null}>
+            <TransactionDetail />
           </Suspense>
         ) : activeTab === 'calendar' && selectedCalendarEvent ? (
           <Suspense fallback={null}>

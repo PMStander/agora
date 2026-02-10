@@ -672,6 +672,29 @@ export function useInvoicing() {
         }
       }
 
+      // Auto-sync: create a financial_transaction for this income
+      if (payment) {
+        const { error: ftError } = await supabase
+          .from('financial_transactions')
+          .insert({
+            transaction_type: 'income',
+            status: 'completed',
+            amount,
+            currency: invoice?.currency || 'USD',
+            invoice_payment_id: (payment as InvoicePayment).id,
+            invoice_id: invoiceId,
+            deal_id: invoice?.deal_id || null,
+            description: invoice
+              ? `Payment for Invoice ${invoice.invoice_number}`
+              : 'Invoice payment',
+            reference_number: reference_number || null,
+            transaction_date: new Date().toISOString(),
+          });
+        if (ftError) {
+          console.error('[Invoicing] Error creating financial transaction:', ftError);
+        }
+      }
+
       return payment as InvoicePayment;
     },
     [store]

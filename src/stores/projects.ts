@@ -4,6 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed' | 'cancelled';
+export type WorkspaceTab = 'overview' | 'missions' | 'files' | 'context' | 'settings';
 
 export interface Project {
   id: string;
@@ -56,11 +57,19 @@ interface ProjectsState {
   updateProject: (projectId: string, updates: Partial<Project>) => void;
   removeProject: (projectId: string) => void;
 
+  // Chat context — which project's context/skills to inject into messages
+  activeProjectForChat: string | null;
+
+  // Workspace tab (detail panel)
+  workspaceTab: WorkspaceTab;
+
   // UI Actions
   selectProject: (id: string | null) => void;
   setActiveSubTab: (tab: ProjectsState['activeSubTab']) => void;
   setSearchQuery: (query: string) => void;
   setFilters: (filters: Partial<ProjectsState['filters']>) => void;
+  setActiveProjectForChat: (projectId: string | null) => void;
+  setWorkspaceTab: (tab: WorkspaceTab) => void;
 }
 
 // ─── Store ──────────────────────────────────────────────────────────────────
@@ -72,6 +81,8 @@ export const useProjectsStore = create<ProjectsState>()(
     (set) => ({
       projects: [],
       selectedProjectId: null,
+      activeProjectForChat: null,
+      workspaceTab: 'overview',
       activeSubTab: 'active',
       searchQuery: '',
       filters: { status: 'all', ownerAgent: null },
@@ -103,12 +114,16 @@ export const useProjectsStore = create<ProjectsState>()(
       setSearchQuery: (query) => set({ searchQuery: query }),
       setFilters: (filters) =>
         set((state) => ({ filters: { ...state.filters, ...filters } })),
+      setActiveProjectForChat: (projectId) => set({ activeProjectForChat: projectId }),
+      setWorkspaceTab: (tab) => set({ workspaceTab: tab }),
     }),
     {
       name: PROJECTS_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         selectedProjectId: state.selectedProjectId,
+        activeProjectForChat: state.activeProjectForChat,
+        workspaceTab: state.workspaceTab,
         activeSubTab: state.activeSubTab,
         filters: state.filters,
       }),
