@@ -1,7 +1,16 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAgentStore } from '../../stores/agents';
 import { BoardroomPresetPicker } from './BoardroomPresetPicker';
-import { getSessionPreset, type BoardroomSessionType } from '../../types/boardroom';
+import { EntitySearchInput } from './EntitySearchInput';
+import {
+  getSessionPreset,
+  type BoardroomSessionType,
+  type BoardroomSessionMetadata,
+  type EntityReference,
+  type PrepAssignment,
+  type PrepMode,
+} from '../../types/boardroom';
+import type { MediaAttachment } from '../../types/supabase';
 
 interface CreateSessionModalProps {
   isOpen: boolean;
@@ -13,11 +22,15 @@ interface CreateSessionModalProps {
     participant_agent_ids: string[];
     max_turns: number;
     scheduled_at: string | null;
+    metadata: BoardroomSessionMetadata;
   }) => void;
 }
 
 export function CreateSessionModal({ isOpen, onClose, onCreateSession }: CreateSessionModalProps) {
   const teams = useAgentStore((s) => s.teams);
+  const allAgents = teams.flatMap((t) => t.agents);
+
+  // ── Existing state ──
   const [sessionType, setSessionType] = useState<BoardroomSessionType>('standup');
   const [title, setTitle] = useState('');
   const [topic, setTopic] = useState('');
@@ -25,6 +38,13 @@ export function CreateSessionModal({ isOpen, onClose, onCreateSession }: CreateS
   const [maxTurns, setMaxTurns] = useState(getSessionPreset('standup').defaultMaxTurns);
   const [scheduleMode, setScheduleMode] = useState<'now' | 'later'>('now');
   const [scheduledAt, setScheduledAt] = useState('');
+
+  // ── New: Context & Preparation state ──
+  const [entityRefs, setEntityRefs] = useState<EntityReference[]>([]);
+  const [attachments, setAttachments] = useState<MediaAttachment[]>([]);
+  const [prepEnabled, setPrepEnabled] = useState(false);
+  const [prepAssignments, setPrepAssignments] = useState<PrepAssignment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
@@ -57,8 +77,56 @@ export function CreateSessionModal({ isOpen, onClose, onCreateSession }: CreateS
     });
   };
 
+  // ── File attachments ──
+  const handleFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newMedia = Array.from(files).map((f) => ({
+      url: URL.createObjectURL(f),
+      type: f.type,
+      name: f.name,
+    }));
+    setAttachments((prev) => [...prev, ...newMedia]);
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // ── Prep assignments ──
+  const addPrepAssignment = () => {
+    setPrepAssignments((prev) => [
+      ...prev,
+      { agent_id: allAgents[0]?.id || '', mode: 'research' as PrepMode, prompt: '' },
+    ]);
+  };
+
+  const updatePrepAssignment = (index: number, updates: Partial<PrepAssignment>) => {
+    setPrepAssignments((prev) =>
+      prev.map((a, i) => (i === index ? { ...a, ...updates } : a))
+    );
+  };
+
+  const removePrepAssignment = (index: number) => {
+    setPrepAssignments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const hasPrepWork = prepEnabled && prepAssignments.some((a) => a.prompt.trim() && a.agent_id);
+
   const handleSubmit = () => {
     if (!title.trim() || selectedAgents.size === 0) return;
+
+    const metadata: BoardroomSessionMetadata = {};
+    if (entityRefs.length > 0) metadata.entity_references = entityRefs;
+    if (attachments.length > 0) metadata.attachments = attachments;
+    if (hasPrepWork) {
+      metadata.preparation = {
+        assignments: prepAssignments.filter((a) => a.prompt.trim() && a.agent_id),
+        results: [],
+        status: 'pending',
+      };
+    }
+
     onCreateSession({
       title: title.trim(),
       topic: topic.trim(),
@@ -66,7 +134,9 @@ export function CreateSessionModal({ isOpen, onClose, onCreateSession }: CreateS
       participant_agent_ids: Array.from(selectedAgents),
       max_turns: maxTurns,
       scheduled_at: scheduleMode === 'later' && scheduledAt ? new Date(scheduledAt).toISOString() : null,
+      metadata,
     });
+
     // Reset form
     setTitle('');
     setTopic('');
@@ -75,8 +145,18 @@ export function CreateSessionModal({ isOpen, onClose, onCreateSession }: CreateS
     setMaxTurns(getSessionPreset('standup').defaultMaxTurns);
     setScheduleMode('now');
     setScheduledAt('');
+    setEntityRefs([]);
+    setAttachments([]);
+    setPrepEnabled(false);
+    setPrepAssignments([]);
     onClose();
   };
+
+  const submitLabel = hasPrepWork
+    ? 'Create & Prepare'
+    : scheduleMode === 'now'
+      ? 'Start Session'
+      : 'Schedule Session';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -120,6 +200,183 @@ export function CreateSessionModal({ isOpen, onClose, onCreateSession }: CreateS
             />
           </div>
 
+          {/* ── Context & Preparation (collapsible) ── */}
+          <details className="group">
+            <summary className="text-xs text-zinc-500 uppercase tracking-wider cursor-pointer select-none flex items-center gap-1.5 hover:text-zinc-400 transition-colors">
+              <span className="text-[10px] transition-transform group-open:rotate-90">&#9654;</span>
+              Context & Preparation
+              {(entityRefs.length > 0 || attachments.length > 0 || hasPrepWork) && (
+                <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-amber-500/15 text-amber-400 rounded-full">
+                  {entityRefs.length + attachments.length + (hasPrepWork ? prepAssignments.length : 0)}
+                </span>
+              )}
+            </summary>
+            <div className="mt-3 space-y-4 pl-1">
+              {/* Entity references */}
+              <div>
+                <label className="text-xs text-zinc-500 block mb-1">Reference Entities</label>
+                <EntitySearchInput value={entityRefs} onChange={setEntityRefs} />
+              </div>
+
+              {/* File attachments */}
+              <div>
+                <label className="text-xs text-zinc-500 block mb-1">Attachments</label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  onChange={handleFileAttach}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-3 py-1.5 text-xs bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-400 hover:border-zinc-600 hover:text-zinc-300 transition-colors"
+                >
+                  + Attach Files
+                </button>
+                {attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {attachments.map((file, i) => (
+                      <span
+                        key={i}
+                        className="flex items-center gap-1 px-2 py-0.5 text-xs bg-zinc-800 border border-zinc-700 rounded-md text-zinc-300"
+                      >
+                        {file.name}
+                        <button onClick={() => removeAttachment(i)} className="ml-1 text-zinc-500 hover:text-zinc-300">
+                          &times;
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Preparation assignments */}
+              <div>
+                <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={prepEnabled}
+                    onChange={(e) => {
+                      setPrepEnabled(e.target.checked);
+                      if (e.target.checked && prepAssignments.length === 0) addPrepAssignment();
+                    }}
+                    className="accent-amber-500"
+                  />
+                  Assign preparation work
+                </label>
+
+                {prepEnabled && (
+                  <div className="mt-2 space-y-3 border-l-2 border-amber-500/30 pl-3">
+                    {prepAssignments.map((assignment, idx) => (
+                      <div key={idx} className="space-y-2 bg-zinc-800/50 rounded-lg p-3">
+                        <div className="flex items-center gap-2">
+                          {/* Agent picker */}
+                          <select
+                            value={assignment.agent_id}
+                            onChange={(e) => updatePrepAssignment(idx, { agent_id: e.target.value })}
+                            className="flex-1 px-2 py-1 bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-zinc-200 focus:outline-none focus:border-amber-500/50"
+                          >
+                            {allAgents.map((agent) => (
+                              <option key={agent.id} value={agent.id}>
+                                {agent.emoji} {agent.name} — {agent.role}
+                              </option>
+                            ))}
+                          </select>
+
+                          {/* Mode toggle */}
+                          <div className="flex rounded-lg border border-zinc-700 overflow-hidden">
+                            <button
+                              onClick={() => updatePrepAssignment(idx, { mode: 'research' })}
+                              className={`px-2 py-1 text-[10px] transition-colors ${
+                                assignment.mode === 'research'
+                                  ? 'bg-amber-500/15 text-amber-400'
+                                  : 'text-zinc-500 hover:text-zinc-300'
+                              }`}
+                            >
+                              Research
+                            </button>
+                            <button
+                              onClick={() => updatePrepAssignment(idx, { mode: 'mission' })}
+                              className={`px-2 py-1 text-[10px] transition-colors ${
+                                assignment.mode === 'mission'
+                                  ? 'bg-amber-500/15 text-amber-400'
+                                  : 'text-zinc-500 hover:text-zinc-300'
+                              }`}
+                            >
+                              Mission
+                            </button>
+                          </div>
+
+                          {/* Remove */}
+                          <button
+                            onClick={() => removePrepAssignment(idx)}
+                            className="text-zinc-600 hover:text-zinc-400 text-sm"
+                          >
+                            &times;
+                          </button>
+                        </div>
+
+                        {/* Prep brief */}
+                        <textarea
+                          value={assignment.prompt}
+                          onChange={(e) => updatePrepAssignment(idx, { prompt: e.target.value })}
+                          placeholder={
+                            assignment.mode === 'research'
+                              ? 'What should this agent research before the session?'
+                              : 'Describe the mission brief for preparation...'
+                          }
+                          rows={2}
+                          className="w-full px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 resize-none"
+                        />
+
+                        {/* Delegate to (optional) */}
+                        <details className="text-[10px]">
+                          <summary className="text-zinc-600 cursor-pointer hover:text-zinc-400">
+                            Delegate to assistants (optional)
+                          </summary>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {allAgents
+                              .filter((a) => a.id !== assignment.agent_id)
+                              .map((agent) => {
+                                const isDelegated = assignment.delegate_to?.includes(agent.id);
+                                return (
+                                  <button
+                                    key={agent.id}
+                                    onClick={() => {
+                                      const current = assignment.delegate_to || [];
+                                      const next = isDelegated
+                                        ? current.filter((id) => id !== agent.id)
+                                        : [...current, agent.id];
+                                      updatePrepAssignment(idx, { delegate_to: next });
+                                    }}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] border transition-colors ${
+                                      isDelegated
+                                        ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                                        : 'border-zinc-700 text-zinc-500 hover:border-zinc-600'
+                                    }`}
+                                  >
+                                    {agent.emoji} {agent.name}
+                                  </button>
+                                );
+                              })}
+                          </div>
+                        </details>
+                      </div>
+                    ))}
+
+                    <button
+                      onClick={addPrepAssignment}
+                      className="text-xs text-zinc-500 hover:text-amber-400 transition-colors"
+                    >
+                      + Add preparation task
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </details>
+
           {/* Participants */}
           <div>
             <label className="text-xs text-zinc-500 uppercase tracking-wider block mb-2">
@@ -143,20 +400,24 @@ export function CreateSessionModal({ isOpen, onClose, onCreateSession }: CreateS
                       {team.agents.map((agent) => {
                         const isSelected = selectedAgents.has(agent.id);
                         return (
-                          <button
-                            key={agent.id}
-                            onClick={() => toggleAgent(agent.id)}
-                            className={`
-                              flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all border
-                              ${isSelected
-                                ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                                : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
-                              }
-                            `}
-                          >
-                            <span>{agent.emoji}</span>
-                            {agent.name}
-                          </button>
+                          <div key={agent.id} className="relative group">
+                            <button
+                              onClick={() => toggleAgent(agent.id)}
+                              className={`
+                                flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all border
+                                ${isSelected
+                                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                                  : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                                }
+                              `}
+                            >
+                              <span>{agent.emoji}</span>
+                              {agent.name}
+                            </button>
+                            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[10px] text-zinc-300 bg-zinc-950 border border-zinc-700 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                              {agent.role}
+                            </span>
+                          </div>
                         );
                       })}
                     </div>
@@ -233,7 +494,7 @@ export function CreateSessionModal({ isOpen, onClose, onCreateSession }: CreateS
               disabled={!title.trim() || selectedAgents.size === 0}
               className="px-4 py-2 text-sm font-medium bg-amber-500 text-black rounded-lg hover:bg-amber-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {scheduleMode === 'now' ? 'Start Session' : 'Schedule Session'}
+              {submitLabel}
             </button>
           </div>
         </div>

@@ -12,13 +12,15 @@ import { TaskDetail } from './components/mission-control/TaskDetail';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useTheme } from './hooks/useTheme';
 import { useMissionScheduler } from './hooks/useMissionScheduler';
+import { useEmbeddingQueueProcessor } from './hooks/useEmbeddingQueueProcessor';
 import { useMissionControlStore, useSelectedMission, useSelectedTask } from './stores/missionControl';
 import { useAgentStore } from './stores/agents';
-import { useSelectedContact, useSelectedCompany, useSelectedDeal } from './stores/crm';
+import { useCrmStore, useSelectedContact, useSelectedCompany, useSelectedDeal } from './stores/crm';
 import { useSelectedQuote, useSelectedInvoice } from './stores/invoicing';
 import { useSelectedEvent } from './stores/calendar';
 import { useSelectedTransaction } from './stores/financial';
 import { addRetroactiveProof, addRetroactiveProofToAll } from './lib/retroactiveProof';
+import { useDocumentCenterStore } from './stores/documentCenter';
 import { NotificationBell } from './components/notifications/NotificationBell';
 import { NotificationToast } from './components/notifications/NotificationToast';
 
@@ -32,7 +34,11 @@ const ContextTab = lazy(() => import('./components/context/ContextTab').then(m =
 const WorkflowsTab = lazy(() => import('./components/workflows/WorkflowsTab').then(m => ({ default: m.WorkflowsTab })));
 const CalendarTab = lazy(() => import('./components/calendar/CalendarTab').then(m => ({ default: m.CalendarTab })));
 const TeamsTab = lazy(() => import('./components/teams/TeamsTab').then(m => ({ default: m.TeamsTab })));
+const AgentWorkspace = lazy(() => import('./components/agents/workspace/AgentWorkspace').then(m => ({ default: m.AgentWorkspace })));
 const MoneyTab = lazy(() => import('./components/financial/MoneyTab').then(m => ({ default: m.MoneyTab })));
+const DocumentCenterTab = lazy(() => import('./components/document-center').then(m => ({ default: m.DocumentCenterTab })));
+const DocumentDetailPanel = lazy(() => import('./components/document-center').then(m => ({ default: m.DocumentDetailPanel })));
+const CrmProfileWorkspace = lazy(() => import('./components/crm/profile').then(m => ({ default: m.CrmProfileWorkspace })));
 
 // Lazy-load CRM detail panels
 const ContactDetail = lazy(() => import('./components/crm/ContactDetail').then(m => ({ default: m.ContactDetail })));
@@ -61,6 +67,9 @@ function App() {
   const selectedCalendarEvent = useSelectedEvent();
   const selectedTransaction = useSelectedTransaction();
   const selectedProfileAgentId = useAgentStore((s) => s.selectedProfileAgentId);
+  const selectedWorkspaceAgentId = useAgentStore((s) => s.selectedWorkspaceAgentId);
+  const selectedDocumentId = useDocumentCenterStore((s) => s.selectedDocumentId);
+  const profileWorkspaceEntityId = useCrmStore((s) => s.profileWorkspaceEntityId);
   
   // Initialize theme
   useTheme();
@@ -69,6 +78,8 @@ function App() {
   useKeyboardShortcuts();
   // Background mission scheduler/runner
   useMissionScheduler();
+  // Background embedding queue processor
+  useEmbeddingQueueProcessor();
 
   // Dev utilities: Expose proof utilities to window for manual retroactive fixes
   useEffect(() => {
@@ -242,6 +253,25 @@ function App() {
                 <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
               </svg>
               Money
+            </button>
+            <button
+              onClick={() => setActiveTab('documents')}
+              className={`
+                flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-lg transition-colors
+                ${activeTab === 'documents'
+                  ? 'bg-amber-500/20 text-amber-400'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                }
+              `}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+                <polyline points="10 9 9 9 8 9"/>
+              </svg>
+              Docs
             </button>
 
             {/* Spacer */}
@@ -436,7 +466,7 @@ function App() {
             {activeTab === 'mission-control' && <MissionControlTab />}
             {activeTab === 'crm' && (
               <Suspense fallback={<div className="flex items-center justify-center h-full text-zinc-500">Loading CRM...</div>}>
-                <CrmTab />
+                {profileWorkspaceEntityId ? <CrmProfileWorkspace /> : <CrmTab />}
               </Suspense>
             )}
             {activeTab === 'products' && (
@@ -476,12 +506,17 @@ function App() {
             )}
             {activeTab === 'teams' && (
               <Suspense fallback={<div className="flex items-center justify-center h-full text-zinc-500">Loading Teams...</div>}>
-                <TeamsTab />
+                {selectedWorkspaceAgentId ? <AgentWorkspace /> : <TeamsTab />}
               </Suspense>
             )}
             {activeTab === 'money' && (
               <Suspense fallback={<div className="flex items-center justify-center h-full text-zinc-500">Loading Money...</div>}>
                 <MoneyTab />
+              </Suspense>
+            )}
+            {activeTab === 'documents' && (
+              <Suspense fallback={<div className="flex items-center justify-center h-full text-zinc-500">Loading Documents...</div>}>
+                <DocumentCenterTab />
               </Suspense>
             )}
           </div>
@@ -537,6 +572,10 @@ function App() {
         ) : activeTab === 'calendar' && selectedCalendarEvent ? (
           <Suspense fallback={null}>
             <EventDetail />
+          </Suspense>
+        ) : activeTab === 'documents' && selectedDocumentId ? (
+          <Suspense fallback={null}>
+            <DocumentDetailPanel />
           </Suspense>
         ) : (
           <ContextPanel

@@ -53,6 +53,13 @@ export function CodebaseCard({ codebase, onRemove }: Props) {
 
       <div className="font-mono text-[11px] text-zinc-500 truncate">{codebase.path}</div>
 
+      {codebase.local_path && (
+        <div className="flex items-center gap-1.5 font-mono text-[11px] text-zinc-600 truncate">
+          <span className="text-[10px] text-zinc-600">📂</span>
+          <span className="truncate">{codebase.local_path}</span>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 text-[10px] text-zinc-600">
         {codebase.branch && (
           <span className="px-1.5 py-0.5 bg-zinc-800 rounded">{codebase.branch}</span>

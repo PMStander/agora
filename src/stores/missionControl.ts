@@ -31,7 +31,7 @@ interface MissionControlState {
   selectedTaskId: string | null;
   isCreateModalOpen: boolean;
   isOperationWizardOpen: boolean;
-  activeTab: 'chat' | 'mission-control' | 'crm' | 'products' | 'projects' | 'reports' | 'reviews' | 'context' | 'automation' | 'invoicing' | 'calendar' | 'teams' | 'money';
+  activeTab: 'chat' | 'mission-control' | 'crm' | 'products' | 'projects' | 'reports' | 'reviews' | 'context' | 'automation' | 'invoicing' | 'calendar' | 'teams' | 'money' | 'documents';
   schedulerLastTickAt: string | null;
   schedulerNextTickAt: string | null;
   schedulerForceTickVersion: number;

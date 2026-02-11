@@ -3,6 +3,7 @@ import { openclawClient, type OpenClawMessage } from '../lib/openclawClient';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { canStartTask, getIncompleteDependencyTitles, isRootMissionPlaceholder } from '../lib/taskDependencies';
 import { checkPermission } from '../lib/permissions';
+import { buildProjectContextInjection } from '../lib/projectContextBuilder';
 import { useMissionControlStore } from '../stores/missionControl';
 import { AGENTS, type Mission, type MissionStatus, type ReviewAction, type ReviewHistoryEntry, type Task, type AgentLevel, type AgentGuardrails } from '../types/supabase';
 import { generateProofReport, appendProofToOutput } from '../lib/proofGenerator';
@@ -104,6 +105,43 @@ async function refreshAgentLevelCache(): Promise<void> {
 function trimThinking(text: string): string {
   if (text.length <= THINKING_BUFFER_LIMIT) return text;
   return text.slice(text.length - THINKING_BUFFER_LIMIT);
+}
+
+// ── Project context lookup (cached per mission for the tick cycle) ─────────
+const projectIdCache = new Map<string, string | null>();
+
+async function getProjectIdForMission(missionId: string): Promise<string | null> {
+  if (projectIdCache.has(missionId)) return projectIdCache.get(missionId)!;
+  if (!isSupabaseConfigured()) return null;
+
+  const { data } = await supabase
+    .from('project_missions')
+    .select('project_id')
+    .eq('mission_id', missionId)
+    .maybeSingle();
+
+  const projectId = data?.project_id || null;
+  // Only cache positive results — null means the project link might not exist YET
+  // (race condition: linkMissionToProject() may run after requestSchedulerTick())
+  if (projectId) {
+    projectIdCache.set(missionId, projectId);
+    setTimeout(() => projectIdCache.delete(missionId), 5 * 60_000);
+  }
+  return projectId;
+}
+
+async function getProjectContext(task: Task): Promise<string> {
+  const missionId = task.root_task_id || task.id;
+  const projectId = await getProjectIdForMission(missionId);
+  if (!projectId) return '';
+
+  try {
+    const context = await buildProjectContextInjection(projectId, task.primary_agent_id);
+    return context || '';
+  } catch (err) {
+    console.error('[MissionScheduler] Failed to build project context:', err);
+    return '';
+  }
 }
 
 function parseTimeOrFallback(value: string | null | undefined, fallbackMs: number): number {
@@ -261,7 +299,7 @@ function buildUpstreamContextSection(task: Task): string {
   ].join('\n');
 }
 
-function buildPrimaryPrompt(task: Task): string {
+async function buildPrimaryPrompt(task: Task): Promise<string> {
   const mediaSection = task.input_media.length > 0
     ? [
         'Attached media metadata (process if relevant):',
@@ -270,12 +308,21 @@ function buildPrimaryPrompt(task: Task): string {
     : 'No media attached.';
 
   const upstreamContext = buildUpstreamContextSection(task);
+  const projectContext = await getProjectContext(task);
+
+  // Extract workdir from project context so it appears at top of prompt for emphasis
+  const workdirMatch = projectContext.match(/use workdir:(\S+)/);
+  const workdirHint = workdirMatch
+    ? `Working directory: ${workdirMatch[1]} — use this path for all file operations and coding agents.`
+    : '';
 
   return [
     'You are executing a mission.',
     `Mission title: ${task.title}`,
+    workdirHint,
     task.input_text ? `Instructions:\n${task.input_text}` : 'Instructions: none provided.',
     mediaSection,
+    projectContext,
     upstreamContext,
     '',
     'Return your complete final work as plain text.',
@@ -299,7 +346,7 @@ function buildReviewHistorySection(task: Task): string {
   return ['## Previous Review History', ...entries].join('\n\n');
 }
 
-function buildReviewPrompt(task: Task, primaryOutput: string): string {
+async function buildReviewPrompt(task: Task, primaryOutput: string): Promise<string> {
   const store = useMissionControlStore.getState();
   const rootId = task.root_task_id || task.id;
   const mission = store.missions.find((entry) => entry.id === rootId);
@@ -319,6 +366,7 @@ function buildReviewPrompt(task: Task, primaryOutput: string): string {
     : '';
 
   const reviewHistorySection = buildReviewHistorySection(task);
+  const projectContext = await getProjectContext(task);
 
   const primaryAgent = agentDisplay(task.primary_agent_id);
   const reviewAgent = task.review_agent_id ? agentDisplay(task.review_agent_id) : null;
@@ -332,6 +380,7 @@ function buildReviewPrompt(task: Task, primaryOutput: string): string {
     missionStatementSection,
     missionPlanSection,
     mediaSection,
+    projectContext,
     '',
     `## Agent Work`,
     `Primary agent: ${primaryAgent.name} (${primaryAgent.id})`,
@@ -764,8 +813,8 @@ export function useMissionScheduler() {
     }
 
     const prompt = overridePrompt || (phase === 'primary'
-      ? buildPrimaryPrompt(task)
-      : buildReviewPrompt(task, task.output_text || ''));
+      ? await buildPrimaryPrompt(task)
+      : await buildReviewPrompt(task, task.output_text || ''));
 
     // Save checkpoint before launching so we can resume after connection drops
     const existingCheckpoint = useMissionControlStore.getState().runCheckpoints[task.id];

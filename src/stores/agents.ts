@@ -2,10 +2,12 @@ import { create } from 'zustand';
 import type {
   AgentFull,
   AgentLifecycleStatus,
+  Mission,
   OnboardingStep,
   SoulProfile,
   TeamType,
 } from '../types/supabase';
+import { buildMissionChatContext, buildMissionMarkerLabel } from '../lib/missionContextBuilder';
 
 export interface Agent {
   id: string;
@@ -48,6 +50,9 @@ interface AgentState {
   // Session versions per agent (incremented on context clear)
   sessionVersionsByAgent: Record<string, number>;
 
+  // Pending mission context for "Chat about it" injection (ephemeral, not persisted)
+  pendingMissionContextByAgent: Record<string, string>;
+
   // Connection state
   isConnected: boolean;
   isLoading: boolean;
@@ -61,6 +66,10 @@ interface AgentState {
   // Selected agent for profile panel
   selectedProfileAgentId: string | null;
 
+  // Agent Workspace (full profile view — replaces main content)
+  selectedWorkspaceAgentId: string | null;
+  agentWorkspaceTab: AgentWorkspaceTab;
+
   // Actions
   setActiveAgent: (agentId: string) => void;
   addMessage: (agentId: string, message: Omit<Message, 'id' | 'timestamp'>) => void;
@@ -70,6 +79,8 @@ interface AgentState {
   clearMessages: (agentId: string) => void;
   insertContextMarker: (agentId: string) => void;
   getSessionVersion: (agentId: string) => number;
+  chatAboutMission: (agentId: string, mission: Mission) => void;
+  clearPendingMissionContext: (agentId: string) => void;
 
   // Hiring & profile actions
   openHiringWizard: () => void;
@@ -80,7 +91,14 @@ interface AgentState {
   completeOnboardingStep: (agentId: string, step: OnboardingStep) => void;
   removeAgent: (agentId: string) => void;
   setSelectedProfileAgentId: (agentId: string | null) => void;
+
+  // Agent Workspace actions
+  openAgentWorkspace: (agentId: string) => void;
+  closeAgentWorkspace: () => void;
+  setAgentWorkspaceTab: (tab: AgentWorkspaceTab) => void;
 }
+
+export type AgentWorkspaceTab = 'overview' | 'identity' | 'skills' | 'files' | 'projects' | 'performance';
 
 // Our agent roster - 'main' maps to the default OpenClaw agent
 // Other agents would need to be configured in OpenClaw's multi-agent setup
@@ -1262,11 +1280,14 @@ export const useAgentStore = create<AgentState>()((set) => ({
   activeAgentId: 'main',
   messagesByAgent: {},
   sessionVersionsByAgent: {},
+  pendingMissionContextByAgent: {},
   isConnected: false,
   isLoading: false,
   agentProfiles: buildInitialProfiles(),
   isHiringWizardOpen: false,
   selectedProfileAgentId: null,
+  selectedWorkspaceAgentId: null,
+  agentWorkspaceTab: 'overview' as AgentWorkspaceTab,
 
   setActiveAgent: (agentId) => set({ activeAgentId: agentId }),
 
@@ -1346,6 +1367,45 @@ export const useAgentStore = create<AgentState>()((set) => ({
   getSessionVersion: (agentId: string): number => {
     return useAgentStore.getState().sessionVersionsByAgent[agentId] || 0;
   },
+
+  chatAboutMission: (agentId, mission) =>
+    set((state) => {
+      const currentVersion = state.sessionVersionsByAgent[agentId] || 0;
+      const newVersion = currentVersion + 1;
+      const markerLabel = buildMissionMarkerLabel(mission);
+      const missionContext = buildMissionChatContext(mission);
+
+      return {
+        activeAgentId: agentId,
+        messagesByAgent: {
+          ...state.messagesByAgent,
+          [agentId]: [
+            ...(state.messagesByAgent[agentId] || []),
+            {
+              id: crypto.randomUUID(),
+              role: 'system' as const,
+              content: markerLabel,
+              timestamp: new Date(),
+              isContextMarker: true,
+            },
+          ],
+        },
+        sessionVersionsByAgent: {
+          ...state.sessionVersionsByAgent,
+          [agentId]: newVersion,
+        },
+        pendingMissionContextByAgent: {
+          ...state.pendingMissionContextByAgent,
+          [agentId]: missionContext,
+        },
+      };
+    }),
+
+  clearPendingMissionContext: (agentId) =>
+    set((state) => {
+      const { [agentId]: _, ...rest } = state.pendingMissionContextByAgent;
+      return { pendingMissionContextByAgent: rest };
+    }),
 
   // ─── Hiring & Profile Actions ──────────────────────────────────────────────
 
@@ -1443,6 +1503,15 @@ export const useAgentStore = create<AgentState>()((set) => ({
     }),
 
   setSelectedProfileAgentId: (agentId) => set({ selectedProfileAgentId: agentId }),
+
+  // Agent Workspace actions
+  openAgentWorkspace: (agentId) => set({
+    selectedWorkspaceAgentId: agentId,
+    agentWorkspaceTab: 'overview',
+    selectedProfileAgentId: null, // close right panel when opening workspace
+  }),
+  closeAgentWorkspace: () => set({ selectedWorkspaceAgentId: null }),
+  setAgentWorkspaceTab: (tab) => set({ agentWorkspaceTab: tab }),
 }));
 
 // Selector helpers
@@ -1460,6 +1529,13 @@ export const useActiveMessages = () => {
   const messagesByAgent = useAgentStore((s) => s.messagesByAgent);
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
   return messagesByAgent[activeAgentId] || [];
+};
+
+// Get the agent profile for the currently open workspace
+export const useWorkspaceAgent = () => {
+  const agentProfiles = useAgentStore((s) => s.agentProfiles);
+  const selectedId = useAgentStore((s) => s.selectedWorkspaceAgentId);
+  return selectedId ? agentProfiles[selectedId] ?? null : null;
 };
 
 // Get messages for context (excluding messages before the last context marker)

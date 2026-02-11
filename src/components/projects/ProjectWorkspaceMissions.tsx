@@ -249,7 +249,7 @@ export function ProjectWorkspaceMissions({ project }: Props) {
                       onClick={() => selectMission(mission.id)}
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        {agent && <span className="text-sm shrink-0">{agent.emoji}</span>}
+                        {agent && <span className="text-sm shrink-0" title={`${agent.name} — ${agent.role}`}>{agent.emoji}</span>}
                         <span className="text-xs text-zinc-300 truncate">{mission.title}</span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">

@@ -1,11 +1,16 @@
 import { lazy, Suspense } from 'react';
 import { useFinancialStore, type FinancialSubTab } from '../../stores/financial';
 import { useFinancial } from '../../hooks/useFinancial';
+import { ContextToggle } from './ContextToggle';
 
 const FinancialDashboard = lazy(() => import('./FinancialDashboard').then(m => ({ default: m.FinancialDashboard })));
 const IncomeList = lazy(() => import('./IncomeList').then(m => ({ default: m.IncomeList })));
 const ExpenseList = lazy(() => import('./ExpenseList').then(m => ({ default: m.ExpenseList })));
 const AccountList = lazy(() => import('./AccountList').then(m => ({ default: m.AccountList })));
+const BudgetsTab = lazy(() => import('./BudgetsTab').then(m => ({ default: m.BudgetsTab })));
+const GoalsTab = lazy(() => import('./GoalsTab').then(m => ({ default: m.GoalsTab })));
+const RecurringTab = lazy(() => import('./RecurringTab').then(m => ({ default: m.RecurringTab })));
+const CashFlowForecast = lazy(() => import('./CashFlowForecast').then(m => ({ default: m.CashFlowForecast })));
 const TaxRatesPanel = lazy(() => import('./TaxRatesPanel').then(m => ({ default: m.TaxRatesPanel })));
 
 const SUB_TABS: { id: FinancialSubTab; label: string; icon: string }[] = [
@@ -13,6 +18,10 @@ const SUB_TABS: { id: FinancialSubTab; label: string; icon: string }[] = [
   { id: 'income',    label: 'Income',    icon: '↓' },
   { id: 'expenses',  label: 'Expenses',  icon: '↑' },
   { id: 'accounts',  label: 'Accounts',  icon: '🏦' },
+  { id: 'budgets',   label: 'Budgets',   icon: '📋' },
+  { id: 'goals',     label: 'Goals',     icon: '🎯' },
+  { id: 'recurring', label: 'Recurring', icon: '🔄' },
+  { id: 'forecast',  label: 'Forecast',  icon: '📈' },
   { id: 'tax',       label: 'Tax Rates', icon: '📋' },
 ];
 
@@ -43,10 +52,11 @@ export function MoneyTab() {
           </button>
         ))}
 
-        {/* Disclaimer */}
-        <div className="ml-auto">
+        {/* Spacer + Context Toggle + Disclaimer */}
+        <div className="ml-auto flex items-center gap-3">
+          <ContextToggle />
           <span className="text-xs text-zinc-600 italic">
-            Financial insights for business planning
+            Financial insights for planning
           </span>
         </div>
       </div>
@@ -58,6 +68,10 @@ export function MoneyTab() {
           {activeSubTab === 'income' && <IncomeList />}
           {activeSubTab === 'expenses' && <ExpenseList />}
           {activeSubTab === 'accounts' && <AccountList />}
+          {activeSubTab === 'budgets' && <BudgetsTab />}
+          {activeSubTab === 'goals' && <GoalsTab />}
+          {activeSubTab === 'recurring' && <RecurringTab />}
+          {activeSubTab === 'forecast' && <CashFlowForecast />}
           {activeSubTab === 'tax' && <TaxRatesPanel />}
         </Suspense>
       </div>

@@ -2,6 +2,7 @@ import { useAgentStore } from '../../stores/agents';
 import { LevelBadge } from '../agents/LevelBadge';
 import type { AgentLifecycleStatus } from '../../types/supabase';
 
+
 const LIFECYCLE_BADGE: Record<AgentLifecycleStatus, { bg: string; text: string }> = {
   candidate: { bg: 'bg-blue-500/20', text: 'text-blue-400' },
   onboarding: { bg: 'bg-amber-500/20', text: 'text-amber-400' },
@@ -14,6 +15,7 @@ export function AgentRoleCard() {
   const selectedId = useAgentStore((s) => s.selectedProfileAgentId);
   const profile = useAgentStore((s) => (selectedId ? s.agentProfiles[selectedId] : null));
   const setSelectedProfileAgentId = useAgentStore((s) => s.setSelectedProfileAgentId);
+  const openAgentWorkspace = useAgentStore((s) => s.openAgentWorkspace);
 
   if (!profile) return null;
 
@@ -47,6 +49,16 @@ export function AgentRoleCard() {
             <p className="text-xs text-zinc-500 italic">{profile.persona}</p>
           </div>
         </div>
+
+        <button
+          onClick={() => {
+            openAgentWorkspace(profile.id);
+            setSelectedProfileAgentId(null);
+          }}
+          className="mt-3 w-full px-3 py-1.5 text-xs bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors text-center"
+        >
+          Open Full Profile
+        </button>
       </div>
 
       {/* Scrollable body */}

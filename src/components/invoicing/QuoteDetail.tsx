@@ -40,6 +40,7 @@ export function QuoteDetail({ onEdit }: QuoteDetailProps) {
   const selectQuote = useInvoicingStore((s) => s.selectQuote);
   const contacts = useCrmStore((s) => s.contacts);
   const companies = useCrmStore((s) => s.companies);
+  const openProfileWorkspace = useCrmStore((s) => s.openProfileWorkspace);
   const { updateQuoteStatus, deleteQuote, convertQuoteToInvoice, fetchQuoteLineItems } =
     useInvoicing();
 
@@ -116,6 +117,12 @@ export function QuoteDetail({ onEdit }: QuoteDetailProps) {
           >
             {statusConfig.label}
           </span>
+          <button
+            onClick={() => openProfileWorkspace('quote', quote.id, quote.quote_number)}
+            className="mt-2 w-full px-3 py-1.5 text-xs bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors text-center"
+          >
+            Open Full Profile
+          </button>
         </div>
 
         {/* Contact & Company */}

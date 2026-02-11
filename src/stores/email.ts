@@ -208,3 +208,11 @@ export const useDefaultAccount = () => {
   const accounts = useEmailStore((s) => s.accounts);
   return accounts.find((a) => a.is_default) || accounts[0] || null;
 };
+
+// ─── Profile Workspace Selectors ─────────────────────────────────────────────
+
+export const useEmailsForCompany = (companyId: string | null, companyContactIds: Set<string>) => {
+  const emails = useEmailStore((s) => s.emails);
+  if (!companyId || companyContactIds.size === 0) return [];
+  return emails.filter((e) => e.contact_id && companyContactIds.has(e.contact_id));
+};

@@ -3,7 +3,7 @@ import { useBoardroomStore } from '../../stores/boardroom';
 import { SessionCard } from './SessionCard';
 import { BoardroomConversation } from './BoardroomConversation';
 import { CreateSessionModal } from './CreateSessionModal';
-import type { BoardroomSessionType } from '../../types/boardroom';
+import type { BoardroomSessionType, BoardroomSessionMetadata } from '../../types/boardroom';
 
 interface BoardroomViewProps {
   onCreateSession: (data: {
@@ -13,6 +13,7 @@ interface BoardroomViewProps {
     participant_agent_ids: string[];
     max_turns: number;
     scheduled_at: string | null;
+    metadata: BoardroomSessionMetadata;
   }) => void;
   onStartSession: (sessionId: string) => void;
   onEndSession: (sessionId: string) => void;
@@ -39,7 +40,7 @@ export function BoardroomView({ onCreateSession, onStartSession, onEndSession, o
 
   const filteredSessions = sessions.filter((s) => {
     if (statusFilter === 'all') return true;
-    if (statusFilter === 'active') return s.status === 'active' || s.status === 'open' || s.status === 'scheduled';
+    if (statusFilter === 'active') return s.status === 'active' || s.status === 'open' || s.status === 'scheduled' || s.status === 'preparing';
     return s.status === 'closed';
   }).sort((a, b) => {
     // Active sessions first, then by date
@@ -114,6 +115,15 @@ export function BoardroomView({ onCreateSession, onStartSession, onEndSession, o
                 >
                   Start Conversation
                 </button>
+              </div>
+            )}
+            {/* Preparing indicator */}
+            {selectedSession.status === 'preparing' && (
+              <div className="px-4 py-3 border-t border-zinc-800">
+                <div className="flex items-center justify-center gap-2 py-2 text-sm text-amber-400">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  Agents are preparing...
+                </div>
               </div>
             )}
           </>

@@ -15,6 +15,8 @@ export type DealStatus = 'open' | 'won' | 'lost' | 'abandoned';
 
 export type LeadScoreLabel = 'cold' | 'warm' | 'hot';
 
+export type CrmEntityType = 'contact' | 'company' | 'deal' | 'quote' | 'invoice' | 'project';
+
 export type InteractionType =
   | 'call'
   | 'email'

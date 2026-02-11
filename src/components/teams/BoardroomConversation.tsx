@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAgentStore } from '../../stores/agents';
 import { useBoardroomStore, useSessionMessages } from '../../stores/boardroom';
-import { getSessionPreset, type BoardroomSession } from '../../types/boardroom';
+import { getSessionPreset, type BoardroomSession, type BoardroomSessionMetadata } from '../../types/boardroom';
+import { PrepFindingCard } from './PrepFindingCard';
+import { PrepProgressBar } from './PrepProgressBar';
 
 interface BoardroomConversationProps {
   session: BoardroomSession;
@@ -15,10 +17,20 @@ export function BoardroomConversation({ session, onEndSession }: BoardroomConver
   const isOrchestrating = useBoardroomStore((s) => s.isOrchestrating);
   const streamingContent = useBoardroomStore((s) => s.streamingContent);
   const activeSessionId = useBoardroomStore((s) => s.activeSessionId);
+  const prepStatus = useBoardroomStore((s) => s.prepStatus[session.id]);
+  const prepResults = useBoardroomStore((s) => s.prepResults[session.id]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [showFindings, setShowFindings] = useState(true);
 
   const preset = getSessionPreset(session.session_type);
   const isActiveSession = activeSessionId === session.id && isOrchestrating;
+
+  // Prep data from session metadata or live store
+  const metadata = session.metadata as BoardroomSessionMetadata | undefined;
+  const metadataPrepResults = metadata?.preparation?.results;
+  const activePrepResults = prepResults || metadataPrepResults;
+  const isPreparing = session.status === 'preparing' || prepStatus === 'running';
+  const hasFindings = activePrepResults?.some((r) => r.status === 'completed' && r.text);
 
   // Auto-scroll to bottom on new messages or streaming
   useEffect(() => {
@@ -78,6 +90,35 @@ export function BoardroomConversation({ session, onEndSession }: BoardroomConver
           ))}
         </div>
       </div>
+
+      {/* Prep progress bar (shown during preparation) */}
+      {isPreparing && activePrepResults && (
+        <PrepProgressBar sessionId={session.id} results={activePrepResults} />
+      )}
+
+      {/* Preparation findings (collapsible) */}
+      {hasFindings && !isPreparing && (
+        <div className="border-b border-zinc-800">
+          <button
+            onClick={() => setShowFindings((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-2 text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            <span className="uppercase tracking-wider font-medium">
+              Preparation Findings ({activePrepResults!.filter((r) => r.status === 'completed').length})
+            </span>
+            <span>{showFindings ? '▾' : '▸'}</span>
+          </button>
+          {showFindings && (
+            <div className="px-4 pb-3 space-y-2">
+              {activePrepResults!
+                .filter((r) => r.status === 'completed' || r.status === 'error')
+                .map((result) => (
+                  <PrepFindingCard key={result.agent_id} result={result} />
+                ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">

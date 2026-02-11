@@ -4,6 +4,7 @@ import { useAgentHiring } from '../../hooks/useAgentHiring';
 import { SoulDisplay } from './SoulDisplay';
 import { SoulEditor } from './SoulEditor';
 import { cn } from '../../lib/utils';
+import { useMissionControlStore } from '../../stores/missionControl';
 import type { AgentLifecycleStatus } from '../../types/supabase';
 
 const LIFECYCLE_BADGE: Record<AgentLifecycleStatus, { bg: string; text: string }> = {
@@ -18,6 +19,8 @@ export function AgentProfilePanel() {
   const selectedId = useAgentStore((s) => s.selectedProfileAgentId);
   const profile = useAgentStore((s) => (selectedId ? s.agentProfiles[selectedId] : null));
   const setSelectedProfileAgentId = useAgentStore((s) => s.setSelectedProfileAgentId);
+  const openAgentWorkspace = useAgentStore((s) => s.openAgentWorkspace);
+  const setActiveTab = useMissionControlStore((s) => s.setActiveTab);
   const { updateSoul, changeLifecycleStatus } = useAgentHiring();
   const [editing, setEditing] = useState(false);
   const [showConfirmAction, setShowConfirmAction] = useState<'suspend' | 'retire' | null>(null);
@@ -85,9 +88,21 @@ export function AgentProfilePanel() {
           <div>Model: {profile.model.split('-').slice(0, 2).join('-')}</div>
         </div>
 
+        {/* Open Full Profile */}
+        <button
+          onClick={() => {
+            openAgentWorkspace(profile.id);
+            setActiveTab('teams');
+            setSelectedProfileAgentId(null);
+          }}
+          className="mt-3 w-full px-3 py-1.5 text-xs bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors text-center"
+        >
+          Open Full Profile
+        </button>
+
         {/* Actions */}
         {!editing && profile.lifecycleStatus !== 'retired' && (
-          <div className="mt-3 flex gap-2">
+          <div className="mt-2 flex gap-2">
             <button
               onClick={() => setEditing(true)}
               className="px-3 py-1.5 text-xs bg-amber-500/10 text-amber-500 rounded-lg hover:bg-amber-500/20 transition-colors"

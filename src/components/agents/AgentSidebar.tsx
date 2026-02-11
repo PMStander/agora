@@ -260,8 +260,9 @@ export function AgentSidebar({ onSettingsClick }: AgentSidebarProps) {
   const isConnected = useAgentStore((s) => s.isConnected);
   const agentProfiles = useAgentStore((s) => s.agentProfiles);
   const openHiringWizard = useAgentStore((s) => s.openHiringWizard);
-  const setSelectedProfileAgentId = useAgentStore((s) => s.setSelectedProfileAgentId);
+  const openAgentWorkspace = useAgentStore((s) => s.openAgentWorkspace);
   const { spawnSubAgent, onSubAgentRunEvent } = useOpenClaw();
+  const setActiveTab = useMissionControlStore((s) => s.setActiveTab);
   const { agentLevels } = useAgentLevel();
   const connectionQuality = useMissionControlStore((s) => s.connectionQuality);
   const reconnecting = useMissionControlStore((s) => s.reconnecting);
@@ -470,7 +471,10 @@ export function AgentSidebar({ onSettingsClick }: AgentSidebarProps) {
             agentLevelMap={agentLevelMap}
             lifecycleMap={lifecycleMap}
             onAgentSelect={setActiveAgent}
-            onProfileClick={(agentId) => setSelectedProfileAgentId(agentId)}
+            onProfileClick={(agentId) => {
+              openAgentWorkspace(agentId);
+              setActiveTab('teams');
+            }}
             isCollapsed={collapsedTeams.has(team.id)}
             onToggleCollapse={() => toggleTeamCollapse(team.id)}
           />

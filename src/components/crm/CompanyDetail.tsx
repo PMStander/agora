@@ -53,6 +53,7 @@ const SIZE_LABELS: Record<CompanySizeCategory, string> = {
 export function CompanyDetail() {
   const company = useSelectedCompany();
   const { selectCompany, selectContact } = useCrmStore();
+  const openProfileWorkspace = useCrmStore((s) => s.openProfileWorkspace);
   const { updateCompanyDetails, deleteCompany } = useCRM();
 
   const contacts = useContactsByCompany(company?.id ?? '');
@@ -160,6 +161,12 @@ export function CompanyDetail() {
               <p className="text-xs text-zinc-500">{company.domain}</p>
             )}
           </div>
+          <button
+            onClick={() => openProfileWorkspace('company', company.id, company.name)}
+            className="mt-1 w-full px-3 py-1.5 text-xs bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors text-center"
+          >
+            Open Full Profile
+          </button>
         </div>
 
         {/* Company Info */}

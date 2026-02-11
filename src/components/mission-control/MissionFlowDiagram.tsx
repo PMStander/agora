@@ -135,7 +135,7 @@ function MissionFlow({
         className="w-full text-left px-4 py-3 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors"
       >
         <div className="flex items-center gap-2">
-          {agent && <span className="text-sm">{agent.emoji}</span>}
+          {agent && <span className="text-sm" title={`${agent.name} — ${agent.role}`}>{agent.emoji}</span>}
           <span className="text-sm font-medium text-zinc-200">{mission.title}</span>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 ml-auto">
             {mission.status}

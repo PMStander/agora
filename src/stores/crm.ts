@@ -8,6 +8,7 @@ import type {
   CrmInteraction,
   LifecycleStatus,
   DealStatus,
+  CrmEntityType,
 } from '../types/crm';
 
 // ─── Store Interface ────────────────────────────────────────────────────────
@@ -34,6 +35,12 @@ interface CrmState {
     ownerAgent: string | null;
     tags: string[];
   };
+
+  // Profile Workspace (full-page entity view)
+  profileWorkspaceEntityType: CrmEntityType | null;
+  profileWorkspaceEntityId: string | null;
+  profileWorkspaceTab: string;
+  profileNavStack: Array<{ entityType: CrmEntityType; entityId: string; label: string }>;
 
   // ─── Contact Actions ──────────────────────────────────────
   setContacts: (contacts: Contact[]) => void;
@@ -70,6 +77,13 @@ interface CrmState {
   setActiveViewId: (id: string | null) => void;
   setSearchQuery: (query: string) => void;
   setFilters: (filters: Partial<CrmState['filters']>) => void;
+
+  // ─── Profile Workspace Actions ──────────────────────────
+  openProfileWorkspace: (entityType: CrmEntityType, entityId: string, label: string) => void;
+  closeProfileWorkspace: () => void;
+  setProfileWorkspaceTab: (tab: string) => void;
+  navigateToProfile: (entityType: CrmEntityType, entityId: string, label: string) => void;
+  navigateBack: () => void;
 }
 
 // ─── Store ──────────────────────────────────────────────────────────────────
@@ -100,6 +114,12 @@ export const useCrmStore = create<CrmState>()(
         ownerAgent: null,
         tags: [],
       },
+
+      // Profile Workspace
+      profileWorkspaceEntityType: null,
+      profileWorkspaceEntityId: null,
+      profileWorkspaceTab: 'overview',
+      profileNavStack: [],
 
       // Contact Actions (upsert pattern from missionControl)
       setContacts: (contacts) => set({ contacts }),
@@ -202,6 +222,53 @@ export const useCrmStore = create<CrmState>()(
       setSearchQuery: (query) => set({ searchQuery: query }),
       setFilters: (filters) =>
         set((state) => ({ filters: { ...state.filters, ...filters } })),
+
+      // Profile Workspace Actions
+      openProfileWorkspace: (entityType, entityId, _label) =>
+        set({
+          profileWorkspaceEntityType: entityType,
+          profileWorkspaceEntityId: entityId,
+          profileWorkspaceTab: 'overview',
+          profileNavStack: [],
+          // Clear sidebar selections
+          selectedContactId: null,
+          selectedCompanyId: null,
+          selectedDealId: null,
+        }),
+      closeProfileWorkspace: () =>
+        set({
+          profileWorkspaceEntityType: null,
+          profileWorkspaceEntityId: null,
+          profileWorkspaceTab: 'overview',
+          profileNavStack: [],
+        }),
+      setProfileWorkspaceTab: (tab) => set({ profileWorkspaceTab: tab }),
+      navigateToProfile: (entityType, entityId, label) =>
+        set((state) => ({
+          profileNavStack: [
+            ...state.profileNavStack,
+            {
+              entityType: state.profileWorkspaceEntityType!,
+              entityId: state.profileWorkspaceEntityId!,
+              label,
+            },
+          ],
+          profileWorkspaceEntityType: entityType,
+          profileWorkspaceEntityId: entityId,
+          profileWorkspaceTab: 'overview',
+        })),
+      navigateBack: () =>
+        set((state) => {
+          const stack = [...state.profileNavStack];
+          const prev = stack.pop();
+          if (!prev) return {};
+          return {
+            profileNavStack: stack,
+            profileWorkspaceEntityType: prev.entityType,
+            profileWorkspaceEntityId: prev.entityId,
+            profileWorkspaceTab: 'overview',
+          };
+        }),
     }),
     {
       name: CRM_STORAGE_KEY,
@@ -215,6 +282,10 @@ export const useCrmStore = create<CrmState>()(
         activeSubTab: state.activeSubTab,
         activeViewId: state.activeViewId,
         filters: state.filters,
+        // Profile workspace (navStack deliberately NOT persisted — session only)
+        profileWorkspaceEntityType: state.profileWorkspaceEntityType,
+        profileWorkspaceEntityId: state.profileWorkspaceEntityId,
+        profileWorkspaceTab: state.profileWorkspaceTab,
       }),
     }
   )
@@ -322,4 +393,18 @@ export const useInteractionsForEntity = (
         return i.deal_id === entityId;
     }
   });
+};
+
+// ─── Profile Workspace Selectors ─────────────────────────────────────────────
+
+export const useDealsByCompany = (companyId: string | null) => {
+  const deals = useCrmStore((s) => s.deals);
+  if (!companyId) return [];
+  return deals.filter((d) => d.company_id === companyId);
+};
+
+export const useDealsByContact = (contactId: string | null) => {
+  const deals = useCrmStore((s) => s.deals);
+  if (!contactId) return [];
+  return deals.filter((d) => d.contact_id === contactId);
 };

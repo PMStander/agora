@@ -118,6 +118,7 @@ export function PerformanceReviewPage() {
             <div key={agent.id} className="flex items-center gap-1.5">
               <button
                 onClick={() => handleAgentClick(agent.id)}
+                title={agent.role}
                 className="flex items-center gap-1.5 px-2 py-1 bg-zinc-800/50 hover:bg-zinc-800 rounded text-xs text-zinc-300 transition-colors"
               >
                 <span>{agent.emoji}</span>

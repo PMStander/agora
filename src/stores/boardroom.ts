@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import type { BoardroomSession, BoardroomMessage } from '../types/boardroom';
+import type { BoardroomSession, BoardroomMessage, PrepStatus, PrepResult } from '../types/boardroom';
 
 // ─── Store Interface ────────────────────────────────────────────────────────
 
@@ -14,6 +14,11 @@ interface BoardroomState {
   currentSpeakingAgentId: string | null;
   isOrchestrating: boolean;
   streamingContent: string;
+
+  // Preparation tracking (transient, not persisted)
+  prepStatus: Record<string, PrepStatus>;
+  prepResults: Record<string, PrepResult[]>;
+  prepStreamingContent: Record<string, Record<string, string>>; // sessionId → agentId → text
 
   // UI State (persisted)
   selectedSessionId: string | null;
@@ -35,6 +40,13 @@ interface BoardroomState {
   setCurrentSpeakingAgentId: (id: string | null) => void;
   setIsOrchestrating: (val: boolean) => void;
   setStreamingContent: (content: string) => void;
+
+  // ─── Preparation Actions ──────────────────────────────────
+  setPrepStatus: (sessionId: string, status: PrepStatus) => void;
+  addPrepResult: (sessionId: string, result: PrepResult) => void;
+  updatePrepResult: (sessionId: string, agentId: string, updates: Partial<PrepResult>) => void;
+  setPrepStreamingContent: (sessionId: string, agentId: string, content: string) => void;
+  clearPrep: (sessionId: string) => void;
 
   // ─── UI Actions ───────────────────────────────────────────
   setSelectedSessionId: (id: string | null) => void;
@@ -58,6 +70,11 @@ export const useBoardroomStore = create<BoardroomState>()(
       currentSpeakingAgentId: null,
       isOrchestrating: false,
       streamingContent: '',
+
+      // Preparation
+      prepStatus: {},
+      prepResults: {},
+      prepStreamingContent: {},
 
       // UI State
       selectedSessionId: null,
@@ -119,6 +136,49 @@ export const useBoardroomStore = create<BoardroomState>()(
       setCurrentSpeakingAgentId: (id) => set({ currentSpeakingAgentId: id }),
       setIsOrchestrating: (val) => set({ isOrchestrating: val }),
       setStreamingContent: (content) => set({ streamingContent: content }),
+
+      // Preparation Actions
+      setPrepStatus: (sessionId, status) =>
+        set((state) => ({
+          prepStatus: { ...state.prepStatus, [sessionId]: status },
+        })),
+      addPrepResult: (sessionId, result) =>
+        set((state) => ({
+          prepResults: {
+            ...state.prepResults,
+            [sessionId]: [...(state.prepResults[sessionId] || []), result],
+          },
+        })),
+      updatePrepResult: (sessionId, agentId, updates) =>
+        set((state) => ({
+          prepResults: {
+            ...state.prepResults,
+            [sessionId]: (state.prepResults[sessionId] || []).map((r) =>
+              r.agent_id === agentId ? { ...r, ...updates } : r
+            ),
+          },
+        })),
+      setPrepStreamingContent: (sessionId, agentId, content) =>
+        set((state) => ({
+          prepStreamingContent: {
+            ...state.prepStreamingContent,
+            [sessionId]: {
+              ...(state.prepStreamingContent[sessionId] || {}),
+              [agentId]: content,
+            },
+          },
+        })),
+      clearPrep: (sessionId) =>
+        set((state) => {
+          const { [sessionId]: _ps, ...restPrepStatus } = state.prepStatus;
+          const { [sessionId]: _pr, ...restPrepResults } = state.prepResults;
+          const { [sessionId]: _pc, ...restPrepStreaming } = state.prepStreamingContent;
+          return {
+            prepStatus: restPrepStatus,
+            prepResults: restPrepResults,
+            prepStreamingContent: restPrepStreaming,
+          };
+        }),
 
       // UI Actions
       setSelectedSessionId: (id) => set({ selectedSessionId: id }),

@@ -616,13 +616,14 @@ export function LaunchOperationWizard() {
               <div>
                 <label className="block text-sm text-zinc-400 mb-2">Assign Agents</label>
                 <div className="flex flex-wrap gap-2">
-                  {collaboratorAgents.map((agent: { id: string; name: string; emoji: string }) => {
+                  {collaboratorAgents.map((agent: { id: string; name: string; emoji: string; role?: string }) => {
                     const selected = selectedAgents.includes(agent.id);
                     return (
                       <button
                         key={agent.id}
                         type="button"
                         onClick={() => toggleAgent(agent.id)}
+                        title={agent.role}
                         className={`px-3 py-1.5 text-xs rounded-full border transition-colors flex items-center gap-1.5 ${
                           selected
                             ? 'bg-amber-500/20 border-amber-500 text-amber-300'

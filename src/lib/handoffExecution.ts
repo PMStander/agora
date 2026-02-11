@@ -127,18 +127,28 @@ const PRIORITY_MAP: Record<string, MissionPriority> = {
   urgent: 'urgent',
 };
 
+export interface HandoffResult {
+  success: boolean;
+  requestingName: string;
+  targetName: string;
+  action: HandoffIntent['action'];
+  missionId: string | null;
+  error?: string;
+}
+
 /**
  * Execute a smart handoff:
  * 1. Record it in Supabase (audit trail)
  * 2. Perform the action (switch chat / create mission / both)
  * 3. Create a notification
+ * Returns a result so callers can provide user feedback.
  */
 export async function executeHandoffIntent(
   intent: HandoffIntent,
   requestingAgentId: string,
   /** Callback to send a message to a target agent. Provided by useOpenClaw. */
   sendMessageFn?: (message: string, agentId: string) => Promise<void>,
-): Promise<void> {
+): Promise<HandoffResult> {
   const agentStore = useAgentStore.getState();
   const missionStore = useMissionControlStore.getState();
 
@@ -172,6 +182,7 @@ export async function executeHandoffIntent(
 
     if (error) {
       console.error('[SmartHandoff] Failed to record handoff:', error);
+      return { success: false, requestingName, targetName, action: intent.action, missionId: null, error: `DB error: ${error.message}` };
     }
   }
 
@@ -183,12 +194,13 @@ export async function executeHandoffIntent(
     agentStore.setActiveAgent(intent.target_agent_id);
 
     // Send the context summary as the first message to the target agent
+    // Note: This may fail if the target agent isn't connected — that's OK,
+    // the handoff record exists and the chat is switched.
     if (sendMessageFn) {
-      // Small delay so the UI has time to switch
       setTimeout(() => {
         const contextMessage = `[Handoff from ${requestingName}]\n\n${intent.context_summary}`;
         sendMessageFn(contextMessage, intent.target_agent_id).catch((err) => {
-          console.error('[SmartHandoff] Failed to send context to target agent:', err);
+          console.warn('[SmartHandoff] Context message to target agent failed (agent may not be connected):', err);
         });
       }, 300);
     }
@@ -290,6 +302,8 @@ export async function executeHandoffIntent(
   } catch (err) {
     console.error('[SmartHandoff] Notification failed:', err);
   }
+
+  return { success: true, requestingName, targetName, action: intent.action, missionId };
 }
 
 // ─── Agent Roster Builder ─────────────────────────────────────────────────────

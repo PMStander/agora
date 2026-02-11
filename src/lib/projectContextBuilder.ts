@@ -48,7 +48,7 @@ export async function buildProjectContextInjection(
     // 5. Get linked codebases
     supabase
       .from('project_codebases')
-      .select('name, source_type, path, branch, description')
+      .select('name, source_type, path, branch, description, local_path')
       .eq('project_id', projectId),
   ]);
 
@@ -99,11 +99,26 @@ export async function buildProjectContextInjection(
     const lines = codebases.map((cb: any) => {
       let line = `- ${cb.name} (${cb.source_type}): ${cb.path}`;
       if (cb.branch) line += ` [${cb.branch}]`;
+      if (cb.local_path) line += ` — local: ${cb.local_path}`;
       if (cb.description) line += ` — ${cb.description}`;
       return line;
     });
+
+    // Build workdir directive for codebases with a local filesystem path
+    const localCodebases = codebases.filter((cb: any) => cb.local_path);
+    const workdirDirective = localCodebases.length > 0
+      ? [
+          '',
+          'IMPORTANT — Working Directory:',
+          'When running coding tools (bash, codex, claude, pi, opencode), you MUST use the project\'s local codebase path as your working directory.',
+          'Do NOT clone the repo or use your own workspace — the code is already checked out locally.',
+          ...localCodebases.map((cb: any) => `- For "${cb.name}": use workdir:${cb.local_path}`),
+          `Example: bash pty:true workdir:${localCodebases[0].local_path} command:"codex exec '...'"`,
+        ].join('\n')
+      : '';
+
     sections.push(
-      `<project_codebases>\nLinked codebases:\n${lines.join('\n')}\n</project_codebases>`
+      `<project_codebases>\nLinked codebases:\n${lines.join('\n')}${workdirDirective}\n</project_codebases>`
     );
   }
 

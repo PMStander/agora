@@ -156,7 +156,11 @@ BEGIN
   ])
   LOOP
     EXECUTE format(
-      'CREATE POLICY IF NOT EXISTS "Allow all %1$s" ON %1$I FOR ALL USING (true) WITH CHECK (true)',
+      'DROP POLICY IF EXISTS "Allow all %1$s" ON %1$I',
+      tbl
+    );
+    EXECUTE format(
+      'CREATE POLICY "Allow all %1$s" ON %1$I FOR ALL USING (true) WITH CHECK (true)',
       tbl
     );
   END LOOP;

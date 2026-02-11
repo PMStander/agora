@@ -64,6 +64,7 @@ function formatCurrency(amount: number | null, currency = 'USD'): string {
 export function ContactDetail() {
   const contact = useSelectedContact();
   const { selectContact } = useCrmStore();
+  const openProfileWorkspace = useCrmStore((s) => s.openProfileWorkspace);
   const companies = useCrmStore((s) => s.companies);
   const deals = useCrmStore((s) => s.deals);
   const pipelines = useCrmStore((s) => s.pipelines);
@@ -193,6 +194,12 @@ export function ContactDetail() {
               <p className="text-xs text-zinc-500">{company.name}</p>
             )}
           </div>
+          <button
+            onClick={() => openProfileWorkspace('contact', contact.id, `${contact.first_name} ${contact.last_name}`)}
+            className="mt-1 w-full px-3 py-1.5 text-xs bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors text-center"
+          >
+            Open Full Profile
+          </button>
         </div>
 
         {/* Contact Info */}

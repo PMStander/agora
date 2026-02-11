@@ -41,6 +41,7 @@ export function InvoiceDetail({ onEdit }: InvoiceDetailProps) {
   const selectInvoice = useInvoicingStore((s) => s.selectInvoice);
   const contacts = useCrmStore((s) => s.contacts);
   const companies = useCrmStore((s) => s.companies);
+  const openProfileWorkspace = useCrmStore((s) => s.openProfileWorkspace);
   const {
     updateInvoiceStatus,
     deleteInvoice,
@@ -140,6 +141,12 @@ export function InvoiceDetail({ onEdit }: InvoiceDetailProps) {
           >
             {statusConfig.label}
           </span>
+          <button
+            onClick={() => openProfileWorkspace('invoice', invoice.id, invoice.invoice_number)}
+            className="mt-2 w-full px-3 py-1.5 text-xs bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors text-center"
+          >
+            Open Full Profile
+          </button>
         </div>
 
         {/* Amount Summary */}

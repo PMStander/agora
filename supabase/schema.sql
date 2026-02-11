@@ -900,10 +900,13 @@ CREATE TABLE IF NOT EXISTS project_codebases (
   path TEXT NOT NULL,
   branch TEXT,
   description TEXT,
+  local_path TEXT,
   metadata JSONB NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE project_codebases ADD COLUMN IF NOT EXISTS local_path TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_project_codebases_project ON project_codebases(project_id);
 

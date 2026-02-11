@@ -10,6 +10,7 @@ export interface ProjectCodebase {
   path: string;
   branch: string | null;
   description: string | null;
+  local_path: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;

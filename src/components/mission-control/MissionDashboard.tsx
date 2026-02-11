@@ -66,7 +66,7 @@ function MissionProgress({
     >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 min-w-0">
-          {agent && <span className="text-sm flex-shrink-0">{agent.emoji}</span>}
+          {agent && <span className="text-sm flex-shrink-0" title={`${agent.name} — ${agent.role}`}>{agent.emoji}</span>}
           <span className="text-xs font-medium text-zinc-200 truncate">{mission.title}</span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -266,7 +266,7 @@ function TaskTimeline({ tasks }: { tasks: Task[] }) {
               </div>
               <div className="flex-1 pb-3 min-w-0">
                 <div className="flex items-center gap-2">
-                  {agent && <span className="text-[11px]">{agent.emoji}</span>}
+                  {agent && <span className="text-[11px]" title={`${agent.name} — ${agent.role}`}>{agent.emoji}</span>}
                   <span className="text-xs text-zinc-200 truncate">{task.title}</span>
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">

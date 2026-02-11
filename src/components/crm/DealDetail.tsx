@@ -67,6 +67,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
 export function DealDetail() {
   const deal = useSelectedDeal();
   const { selectDeal, selectContact, selectCompany } = useCrmStore();
+  const openProfileWorkspace = useCrmStore((s) => s.openProfileWorkspace);
   const contacts = useCrmStore((s) => s.contacts);
   const companies = useCrmStore((s) => s.companies);
   const pipelines = useCrmStore((s) => s.pipelines);
@@ -182,6 +183,12 @@ export function DealDetail() {
           {deal.description && (
             <p className="text-sm text-zinc-400 mt-2">{deal.description}</p>
           )}
+          <button
+            onClick={() => openProfileWorkspace('deal', deal.id, deal.title)}
+            className="mt-2 w-full px-3 py-1.5 text-xs bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors text-center"
+          >
+            Open Full Profile
+          </button>
         </div>
 
         {/* Deal Info */}

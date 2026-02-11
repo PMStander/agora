@@ -1,5 +1,7 @@
 // ─── Boardroom Types ──────────────────────────────────────────────────────
 
+import type { MediaAttachment } from './supabase';
+
 export type BoardroomSessionType =
   | 'standup'
   | 'task_review'
@@ -10,7 +12,7 @@ export type BoardroomSessionType =
   | 'war_room'
   | 'custom';
 
-export type BoardroomSessionStatus = 'scheduled' | 'open' | 'active' | 'closed';
+export type BoardroomSessionStatus = 'scheduled' | 'preparing' | 'open' | 'active' | 'closed';
 
 export interface BoardroomSession {
   id: string;
@@ -26,9 +28,64 @@ export interface BoardroomSession {
   started_at: string | null;
   ended_at: string | null;
   created_by: string; // 'user' or an agent ID
-  metadata: Record<string, unknown>;
+  metadata: BoardroomSessionMetadata;
   created_at: string;
   updated_at: string;
+}
+
+// ─── Entity References ───────────────────────────────────────────────────
+
+export type EntityReferenceType = 'company' | 'contact' | 'product' | 'project' | 'deal';
+
+export interface EntityReference {
+  type: EntityReferenceType;
+  id: string;
+  label: string;
+  emoji?: string;
+}
+
+export const ENTITY_TYPE_EMOJI: Record<EntityReferenceType, string> = {
+  company: '🏢',
+  contact: '👤',
+  product: '📦',
+  project: '📁',
+  deal: '💰',
+};
+
+// ─── Preparation Phase ───────────────────────────────────────────────────
+
+export type PrepMode = 'research' | 'mission';
+export type PrepStatus = 'pending' | 'running' | 'completed' | 'error';
+
+export interface PrepAssignment {
+  agent_id: string;
+  mode: PrepMode;
+  prompt: string;
+  delegate_to?: string[];
+}
+
+export interface PrepResult {
+  agent_id: string;
+  status: PrepStatus;
+  text: string;
+  mission_id?: string;
+  error?: string;
+  completed_at?: string;
+}
+
+// ─── Session Metadata ────────────────────────────────────────────────────
+
+export interface BoardroomSessionMetadata {
+  entity_references?: EntityReference[];
+  attachments?: MediaAttachment[];
+  preparation?: {
+    assignments: PrepAssignment[];
+    results: PrepResult[];
+    status: PrepStatus;
+    started_at?: string;
+    completed_at?: string;
+  };
+  [key: string]: unknown; // allow additional ad-hoc fields
 }
 
 export interface BoardroomMessage {

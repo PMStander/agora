@@ -408,13 +408,14 @@ export function MissionStatementModal({ isOpen, onClose }: MissionStatementModal
           <div>
             <label className="block text-sm text-zinc-400 mb-2">Collaborating Agents (parallel input)</label>
             <div className="flex flex-wrap gap-2">
-              {collaboratorAgents.map((agent: { id: string; name: string; emoji: string }) => {
+              {collaboratorAgents.map((agent: { id: string; name: string; emoji: string; role?: string }) => {
                 const selected = selectedAgents.includes(agent.id);
                 return (
                   <button
                     key={agent.id}
                     type="button"
                     onClick={() => toggleAgent(agent.id)}
+                    title={agent.role}
                     className={`
                       px-2.5 py-1.5 text-xs rounded-full border transition-colors flex items-center gap-1
                       ${selected

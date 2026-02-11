@@ -145,3 +145,13 @@ export const useEventsForDeal = (dealId: string | null) => {
     .filter((e) => e.deal_id === dealId && e.status !== 'cancelled')
     .sort((a, b) => a.start_at.localeCompare(b.start_at));
 };
+
+// ─── Profile Workspace Selectors ─────────────────────────────────────────────
+
+export const useEventsForCompany = (companyId: string | null, companyContactIds: Set<string>) => {
+  const events = useCalendarStore((s) => s.events);
+  if (!companyId || companyContactIds.size === 0) return [];
+  return events
+    .filter((e) => e.contact_id && companyContactIds.has(e.contact_id) && e.status !== 'cancelled')
+    .sort((a, b) => a.start_at.localeCompare(b.start_at));
+};

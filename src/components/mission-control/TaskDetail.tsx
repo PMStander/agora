@@ -577,12 +577,13 @@ export function TaskDetail() {
         <div>
           <label className="block text-xs text-zinc-500 mb-2">Assigned To</label>
           <div className="flex flex-wrap gap-2">
-            {agents.map((agent: { id: string; name: string; emoji: string }) => {
+            {agents.map((agent: { id: string; name: string; emoji: string; role?: string }) => {
               const isAssigned = task.assignees?.some((a) => a.id === agent.id);
               return (
                 <button
                   key={agent.id}
                   onClick={() => handleAssigneeToggle(agent.id)}
+                  title={agent.role}
                   className={`
                     px-2 py-1 text-xs rounded-full border transition-colors flex items-center gap-1
                     ${isAssigned

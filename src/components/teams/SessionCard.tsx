@@ -9,6 +9,7 @@ interface SessionCardProps {
 
 const STATUS_COLORS: Record<string, string> = {
   scheduled: 'text-blue-400 bg-blue-500/10',
+  preparing: 'text-amber-400 bg-amber-500/10',
   open: 'text-zinc-400 bg-zinc-700/50',
   active: 'text-green-400 bg-green-500/10',
   closed: 'text-zinc-500 bg-zinc-800',
@@ -46,7 +47,7 @@ export function SessionCard({ session, isSelected, onClick }: SessionCardProps) 
           <h4 className="text-sm font-medium text-zinc-200 truncate">{session.title}</h4>
           <div className="flex items-center gap-2 mt-0.5">
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${STATUS_COLORS[session.status] || STATUS_COLORS.open}`}>
-              {session.status === 'active' ? '● LIVE' : session.status}
+              {session.status === 'active' ? '● LIVE' : session.status === 'preparing' ? '◌ preparing' : session.status}
             </span>
             <span className="text-[10px] text-zinc-600">{dateStr}</span>
           </div>

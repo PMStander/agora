@@ -176,3 +176,29 @@ export const useInvoicesForDeal = (dealId: string | null) => {
   if (!dealId) return [];
   return invoices.filter((i) => i.deal_id === dealId);
 };
+
+// ─── Profile Workspace Selectors ─────────────────────────────────────────────
+
+export const useQuotesForContact = (contactId: string | null) => {
+  const quotes = useInvoicingStore((s) => s.quotes);
+  if (!contactId) return [];
+  return quotes.filter((q) => q.contact_id === contactId);
+};
+
+export const useQuotesForCompany = (companyId: string | null) => {
+  const quotes = useInvoicingStore((s) => s.quotes);
+  if (!companyId) return [];
+  return quotes.filter((q) => q.company_id === companyId);
+};
+
+export const useInvoicesForContact = (contactId: string | null) => {
+  const invoices = useInvoicingStore((s) => s.invoices);
+  if (!contactId) return [];
+  return invoices.filter((i) => i.contact_id === contactId);
+};
+
+export const useInvoicesForCompany = (companyId: string | null) => {
+  const invoices = useInvoicingStore((s) => s.invoices);
+  if (!companyId) return [];
+  return invoices.filter((i) => i.company_id === companyId);
+};

@@ -170,7 +170,7 @@ export function ProjectWorkspaceContext({ project }: Props) {
               if (!techKeys || techKeys.length === 0) return null;
               return (
                 <div key={assignment.agent_id} className="flex items-start gap-2">
-                  <span className="text-xs text-zinc-400 shrink-0 mt-0.5">
+                  <span className="text-xs text-zinc-400 shrink-0 mt-0.5" title={agent?.role}>
                     {agent ? `${agent.emoji} ${agent.name}` : assignment.agent_id}
                   </span>
                   <div className="flex flex-wrap gap-1">
@@ -204,7 +204,7 @@ export function ProjectWorkspaceContext({ project }: Props) {
                 const agent = getAgent(agentId);
                 return (
                   <div key={agentId} className="flex items-start gap-2">
-                    <span className="text-xs text-zinc-400 shrink-0 mt-0.5">
+                    <span className="text-xs text-zinc-400 shrink-0 mt-0.5" title={agent?.role}>
                       {agent ? `${agent.emoji} ${agent.name}` : agentId}
                     </span>
                     <div className="flex flex-wrap gap-1">

@@ -8,6 +8,7 @@ interface Props {
     path: string;
     branch?: string;
     description?: string;
+    local_path?: string;
   }) => Promise<unknown>;
   onClose: () => void;
 }
@@ -20,6 +21,7 @@ export function AddCodebaseModal({ onAdd, onClose }: Props) {
   const [path, setPath] = useState('');
   const [branch, setBranch] = useState('');
   const [description, setDescription] = useState('');
+  const [localPath, setLocalPath] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const isGitSource = ['github', 'gitlab', 'bitbucket'].includes(sourceType);
@@ -43,6 +45,7 @@ export function AddCodebaseModal({ onAdd, onClose }: Props) {
         path: path.trim(),
         branch: branch.trim() || undefined,
         description: description.trim() || undefined,
+        local_path: localPath.trim() || undefined,
       });
       onClose();
     } catch {
@@ -139,6 +142,23 @@ export function AddCodebaseModal({ onAdd, onClose }: Props) {
                 placeholder="main"
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500"
               />
+            </div>
+          )}
+
+          {/* Local Path (shown for git sources) */}
+          {isGitSource && (
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1">Local Path (optional)</label>
+              <input
+                type="text"
+                value={localPath}
+                onChange={(e) => setLocalPath(e.target.value)}
+                placeholder="/Users/you/project-folder"
+                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 font-mono text-xs"
+              />
+              <p className="text-[10px] text-zinc-600 mt-1">
+                Local filesystem checkout so agents can read/write files
+              </p>
             </div>
           )}
 

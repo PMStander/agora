@@ -9,6 +9,7 @@ import { LeadScoreBadge } from './LeadScoreBadge';
 import { DuplicateBadge } from './DuplicateBadge';
 import { DuplicateDetectionModal } from './DuplicateDetectionModal';
 import { ImportContactsModal } from './ImportContactsModal';
+import { CreateContactModal } from './CreateContactModal';
 import { ExportButton } from './ExportButton';
 import { SaveViewButton } from './SaveViewButton';
 
@@ -91,6 +92,7 @@ export function ContactList() {
   const [sortDir, setSortDir] = useState<SortDirection>('asc');
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showCreateContactModal, setShowCreateContactModal] = useState(false);
 
   const {
     findDuplicates,
@@ -205,7 +207,10 @@ export function ContactList() {
           >
             {isScanning ? 'Scanning...' : 'Find Duplicates'}
           </button>
-          <button className="px-4 py-1.5 bg-amber-500 text-black text-sm font-medium rounded-lg hover:bg-amber-400 transition-colors">
+          <button
+            onClick={() => setShowCreateContactModal(true)}
+            className="px-4 py-1.5 bg-amber-500 text-black text-sm font-medium rounded-lg hover:bg-amber-400 transition-colors"
+          >
             New Contact
           </button>
         </div>
@@ -364,6 +369,12 @@ export function ContactList() {
       <ImportContactsModal
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
+      />
+
+      {/* Create Contact Modal */}
+      <CreateContactModal
+        isOpen={showCreateContactModal}
+        onClose={() => setShowCreateContactModal(false)}
       />
     </div>
   );

@@ -82,6 +82,7 @@ export function useProjectCodebases(projectId: string | null) {
       path: string;
       branch?: string;
       description?: string;
+      local_path?: string;
     }) => {
       if (!isSupabaseConfigured() || !projectId) return null;
 
@@ -94,6 +95,7 @@ export function useProjectCodebases(projectId: string | null) {
           path: data.path,
           branch: data.branch || null,
           description: data.description || null,
+          local_path: data.local_path || null,
         })
         .select()
         .single();

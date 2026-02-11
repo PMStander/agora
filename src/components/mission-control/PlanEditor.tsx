@@ -838,7 +838,7 @@ export function PlanEditor({ plan, onChange, validationErrors, readOnly = false 
               <div
                 key={agent.id}
                 className="w-6 h-6 rounded-full bg-zinc-800 border-2 border-zinc-900 flex items-center justify-center"
-                title={`${agent.emoji} ${agent.name}`}
+                title={`${agent.emoji} ${agent.name} — ${agent.role}`}
               >
                 <span className="text-xs">{agent.emoji}</span>
               </div>

@@ -3,7 +3,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useBoardroomStore } from '../stores/boardroom';
 import { handleRealtimePayload } from '../lib/realtimeHelpers';
 import { createNotificationDirect } from './useNotifications';
-import type { BoardroomSession, BoardroomMessage, BoardroomSessionType } from '../types/boardroom';
+import type { BoardroomSession, BoardroomMessage, BoardroomSessionType, BoardroomSessionMetadata } from '../types/boardroom';
 
 export function useBoardroom() {
   const store = useBoardroomStore();
@@ -102,8 +102,10 @@ export function useBoardroom() {
       participant_agent_ids: string[];
       max_turns: number;
       scheduled_at: string | null;
+      metadata?: BoardroomSessionMetadata;
     }) => {
-      const status = data.scheduled_at ? 'scheduled' : 'open';
+      const hasPrepWork = data.metadata?.preparation?.assignments?.length;
+      const status = data.scheduled_at ? 'scheduled' : hasPrepWork ? 'preparing' : 'open';
       const { data: session, error } = await supabase
         .from('boardroom_sessions')
         .insert({
@@ -115,6 +117,7 @@ export function useBoardroom() {
           max_turns: data.max_turns,
           scheduled_at: data.scheduled_at,
           created_by: 'user',
+          metadata: data.metadata || {},
         })
         .select()
         .single();
@@ -127,6 +130,23 @@ export function useBoardroom() {
       store.addSession(created);
       store.setSelectedSessionId(created.id);
       return created;
+    },
+    [store]
+  );
+
+  // ── Update session metadata ──
+  const updateSessionMetadata = useCallback(
+    async (sessionId: string, metadataUpdates: Partial<BoardroomSessionMetadata>) => {
+      const session = store.sessions.find((s) => s.id === sessionId);
+      if (!session) return;
+      const merged = { ...(session.metadata || {}), ...metadataUpdates };
+      const { error } = await supabase
+        .from('boardroom_sessions')
+        .update({ metadata: merged, updated_at: new Date().toISOString() })
+        .eq('id', sessionId);
+      if (!error) {
+        store.updateSession(sessionId, { metadata: merged as BoardroomSessionMetadata });
+      }
     },
     [store]
   );
@@ -224,6 +244,7 @@ export function useBoardroom() {
     endSession,
     fetchMessages,
     addMessageToSession,
+    updateSessionMetadata,
     isConfigured: isSupabaseConfigured(),
   };
 }

@@ -4,7 +4,7 @@ import { useAgentStore } from '../stores/agents';
 import { useBoardroomStore } from '../stores/boardroom';
 import { useBoardroom } from './useBoardroom';
 import { createNotificationDirect } from './useNotifications';
-import { getSessionPreset, type BoardroomMessage, type BoardroomSession } from '../types/boardroom';
+import { getSessionPreset, type BoardroomMessage, type BoardroomSession, type BoardroomSessionMetadata } from '../types/boardroom';
 
 // ─── Utility functions (extracted from useOpenClaw patterns) ──────────────
 
@@ -39,8 +39,20 @@ function extractReasoning(message: any): string {
 function mergeDeltaBuffer(previous: string, incoming: string): string {
   if (!incoming) return previous;
   if (!previous) return incoming;
+
+  // Cumulative: incoming is the full response so far (supersedes previous)
   if (incoming.startsWith(previous)) return incoming;
+  // Stale/duplicate: previous already contains incoming
   if (previous.startsWith(incoming)) return previous;
+
+  // Heuristic: if incoming is nearly as long or longer than previous,
+  // the gateway is in cumulative mode but minor formatting differences
+  // caused the exact startsWith check to fail. Use the longer text.
+  if (incoming.length > previous.length * 0.8) {
+    return incoming;
+  }
+
+  // Append mode: gateway sends just the new token/chunk
   return previous + incoming;
 }
 
@@ -101,6 +113,44 @@ function buildAgentPrompt(
   if (session.topic) parts.push(`Topic: ${session.topic}`);
   parts.push(`Participants: ${participantList}`);
   parts.push(`Turn ${turnNumber} of ${session.max_turns}`);
+
+  // Entity references
+  const metadata = session.metadata as BoardroomSessionMetadata | undefined;
+  if (metadata?.entity_references?.length) {
+    parts.push('');
+    parts.push('=== REFERENCED ENTITIES ===');
+    for (const ref of metadata.entity_references) {
+      parts.push(`- ${ref.emoji || ''} [${ref.type}] ${ref.label}`);
+    }
+  }
+
+  // Attachments
+  if (metadata?.attachments?.length) {
+    parts.push('');
+    parts.push('=== ATTACHED FILES ===');
+    for (const att of metadata.attachments) {
+      parts.push(`- ${att.name} (${att.type})`);
+    }
+  }
+
+  // Preparation findings
+  if (metadata?.preparation?.results?.length) {
+    const completedResults = metadata.preparation.results.filter((r) => r.status === 'completed');
+    if (completedResults.length > 0) {
+      parts.push('');
+      parts.push('=== PREPARATION FINDINGS ===');
+      for (const result of completedResults) {
+        const prepAgent = agentProfiles[result.agent_id];
+        const agentLabel = prepAgent ? `${prepAgent.emoji} ${prepAgent.name}` : result.agent_id;
+        parts.push(`--- ${agentLabel} ---`);
+        const truncatedText = result.text.length > 2000
+          ? result.text.slice(0, 2000) + '... (truncated)'
+          : result.text;
+        parts.push(truncatedText);
+      }
+      parts.push('Use these preparation findings as background context for the discussion.');
+    }
+  }
 
   // Conversation history
   if (historyLines.length > 0) {

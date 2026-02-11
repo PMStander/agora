@@ -45,7 +45,7 @@ function InteractionItem({ interaction }: InteractionItemProps) {
             </span>
           )}
           {agent && (
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-zinc-500" title={agent.role}>
               {agent.emoji} {agent.name}
             </span>
           )}

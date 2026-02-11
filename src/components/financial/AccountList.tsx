@@ -68,6 +68,7 @@ export function AccountList() {
         is_default: accounts.length === 0,
         is_active: true,
         notes: notes || null,
+        context: 'business',
       });
     }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { openclawClient, type OpenClawMessage, type ConnectionStatus } from '../lib/openclawClient';
 import { useAgentStore } from '../stores/agents';
-import { recallContextForAgent } from '../lib/memoryIntelligence/semanticRecall';
+import { recallContextForAgent, recallEntityContext } from '../lib/memoryIntelligence/semanticRecall';
 import { storeEmbedding } from '../lib/memoryIntelligence/embeddingService';
 import { extractHandoffIntent, executeHandoffIntent, buildAgentRoster, HANDOFF_SYSTEM_PROMPT } from '../lib/handoffExecution';
 import { buildProjectContextInjection } from '../lib/projectContextBuilder';
@@ -140,8 +140,20 @@ function mergeDeltaBuffer(previous: string, incoming: string): string {
   if (!previous) return incoming;
 
   // Some gateways stream cumulative text, others stream chunks.
+  // Cumulative: incoming is the full response so far (supersedes previous)
   if (incoming.startsWith(previous)) return incoming;
+  // Stale/duplicate: previous already contains incoming
   if (previous.startsWith(incoming)) return previous;
+
+  // Heuristic: if the incoming text is longer than what we'd expect from a
+  // single chunk AND it shares a significant prefix with previous, the
+  // gateway is in cumulative mode but minor formatting differences caused
+  // the exact startsWith check to fail. Use the longer text.
+  if (incoming.length > previous.length * 0.8) {
+    return incoming;
+  }
+
+  // Append mode: gateway sends just the new token/chunk
   return previous + incoming;
 }
 
@@ -323,9 +335,33 @@ export function useOpenClaw() {
 
           // ── Execute smart handoff if agent requested one ──────────────
           if (handoffIntent) {
-            executeHandoffIntent(handoffIntent, targetAgent, sendMessageRef.current).catch((err) => {
-              console.error('[useOpenClaw] Handoff execution failed:', err);
-            });
+            console.log('[useOpenClaw] Handoff intent detected from', targetAgent, '→', handoffIntent.target_agent_id, '| action:', handoffIntent.action);
+            executeHandoffIntent(handoffIntent, targetAgent, sendMessageRef.current)
+              .then((result) => {
+                const { addMessage: addMsg } = useAgentStore.getState();
+                if (result.success) {
+                  console.log('[useOpenClaw] Handoff executed successfully:', result.requestingName, '→', result.targetName);
+                  // Add system confirmation to requesting agent's chat
+                  addMsg(targetAgent, {
+                    role: 'system',
+                    content: `Handoff to **${result.targetName}** executed successfully (${result.action}).${result.missionId ? ' Mission created.' : ''}`,
+                  });
+                } else {
+                  console.error('[useOpenClaw] Handoff execution failed:', result.error);
+                  addMsg(targetAgent, {
+                    role: 'system',
+                    content: `Handoff to **${handoffIntent.target_agent_id}** failed: ${result.error ?? 'Unknown error'}. Please try again or create the task manually.`,
+                  });
+                }
+              })
+              .catch((err) => {
+                console.error('[useOpenClaw] Handoff execution threw:', err);
+                const { addMessage: addMsg } = useAgentStore.getState();
+                addMsg(targetAgent, {
+                  role: 'system',
+                  content: `Handoff failed unexpectedly: ${String(err)}. The task was not transferred.`,
+                });
+              });
           }
         }
 
@@ -411,13 +447,19 @@ export function useOpenClaw() {
     // ── Semantic Recall: enrich message with relevant past context ──────
     let enrichedMessage = message;
     try {
-      const recalled = await recallContextForAgent(targetAgent, message, {
-        maxMemories: 5,
-        includePatterns: true,
-        includeRecentSummary: true,
-      });
+      const [recalled, entityContext] = await Promise.all([
+        recallContextForAgent(targetAgent, message, {
+          maxMemories: 5,
+          includePatterns: true,
+          includeRecentSummary: true,
+        }),
+        recallEntityContext(targetAgent, message, { maxResults: 5 }),
+      ]);
       if (recalled.formattedContext) {
         enrichedMessage = `${message}\n\n---\n<recalled_context>\n${recalled.formattedContext}\n</recalled_context>`;
+      }
+      if (entityContext) {
+        enrichedMessage += `\n\n<entity_context>\n${entityContext}\n</entity_context>`;
       }
     } catch (err) {
       console.warn('[useOpenClaw] Semantic recall failed (non-blocking):', err);
@@ -440,6 +482,13 @@ export function useOpenClaw() {
       } catch (err) {
         console.warn('[useOpenClaw] Project context injection failed (non-blocking):', err);
       }
+    }
+
+    // ── Mission context: inject if this is the first message in a "chat about it" session
+    const pendingMissionContext = useAgentStore.getState().pendingMissionContextByAgent[targetAgent];
+    if (pendingMissionContext) {
+      enrichedMessage += `\n\n${pendingMissionContext}`;
+      useAgentStore.getState().clearPendingMissionContext(targetAgent);
     }
 
     // ── Auto-embed user message (fire-and-forget) ──────────────────────

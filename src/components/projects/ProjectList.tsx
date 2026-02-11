@@ -127,7 +127,7 @@ export function ProjectList() {
                   {/* Agent + Client */}
                   <div className="flex items-center gap-2 mb-3 text-xs text-zinc-400">
                     {agent && (
-                      <span className="flex items-center gap-1">
+                      <span className="flex items-center gap-1" title={agent.role}>
                         <span>{agent.emoji}</span>
                         <span>{agent.name}</span>
                       </span>

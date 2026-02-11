@@ -8,7 +8,9 @@
 
 import { semanticSearch } from './embeddingService';
 import { supabase, isSupabaseConfigured } from '../supabase';
+import { searchEntities } from '../embeddingSearch';
 import type { SemanticSearchResult, MemorySummary, AgentLearnedPattern } from '../../types/memoryIntelligence';
+import type { EmbeddableEntityType } from '../../types/entityEmbeddings';
 
 export interface RecalledContext {
   memories: SemanticSearchResult[];
@@ -204,4 +206,48 @@ export async function getPriorityContext(
   });
 
   return lines.join('\n');
+}
+
+/**
+ * Recall relevant entity data for an agent before sending a message.
+ * Uses Gemini vector embeddings to find semantically related entities
+ * (companies, contacts, deals, products, missions, etc.).
+ */
+export async function recallEntityContext(
+  _agentId: string,
+  userMessage: string,
+  options?: {
+    maxResults?: number;
+    entityTypes?: EmbeddableEntityType[];
+  }
+): Promise<string> {
+  const { maxResults = 5, entityTypes } = options || {};
+
+  if (!isSupabaseConfigured() || !userMessage.trim()) return '';
+
+  try {
+    const results = await searchEntities(userMessage, {
+      entityTypes,
+      limit: maxResults,
+      threshold: 0.3,
+      hybrid: true,
+    });
+
+    if (results.length === 0) return '';
+
+    const lines = ['## Relevant Data'];
+    results.forEach((r, i) => {
+      const similarity = (r.similarity * 100).toFixed(0);
+      // Show first 300 chars of content_text
+      const snippet = r.content_text.length > 300
+        ? r.content_text.slice(0, 300) + '...'
+        : r.content_text;
+      lines.push(`${i + 1}. [${r.entity_type}] (${similarity}% match) ${snippet}`);
+    });
+
+    return lines.join('\n');
+  } catch (err) {
+    console.warn('[SemanticRecall] recallEntityContext error (non-blocking):', err);
+    return '';
+  }
 }
