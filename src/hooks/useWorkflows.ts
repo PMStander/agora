@@ -348,7 +348,7 @@ async function processAction(
 ) {
   switch (action.type) {
     case 'create_mission': {
-      const agentId = action.agent_id || 'main';
+      const agentId = action.agent_id || 'alexander';
       const title =
         action.mission_title ||
         action.template ||
@@ -438,7 +438,7 @@ async function processAction(
         .insert({
           title: action.title || 'Workflow-generated task',
           description: action.description || null,
-          agent_id: action.agent_id || 'main',
+          agent_id: action.agent_id || 'alexander',
           status: 'scheduled',
           mission_status: 'scheduled',
           mission_phase: 'tasks',

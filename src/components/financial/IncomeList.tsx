@@ -1,10 +1,13 @@
+import { useState } from 'react';
 import { useIncomeTransactions, useFinancialStore } from '../../stores/financial';
 import { TRANSACTION_STATUS_CONFIG } from '../../types/financial';
+import { CreateIncomeModal } from './CreateIncomeModal';
 
 export function IncomeList() {
   const incomeTransactions = useIncomeTransactions();
   const selectTransaction = useFinancialStore((s) => s.selectTransaction);
   const selectedId = useFinancialStore((s) => s.selectedTransactionId);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const fmt = (n: number) =>
     n.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -23,9 +26,17 @@ export function IncomeList() {
             {incomeTransactions.length} transaction{incomeTransactions.length !== 1 ? 's' : ''}
           </span>
         </div>
-        <span className="text-sm font-mono text-green-400">
-          +${fmt(totalIncome)}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-mono text-green-400">
+            +${fmt(totalIncome)}
+          </span>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-3 py-1.5 text-xs bg-green-600 text-white font-semibold rounded-lg hover:bg-green-500 transition-colors"
+          >
+            + Add Income
+          </button>
+        </div>
       </div>
 
       {/* List */}
@@ -34,14 +45,22 @@ export function IncomeList() {
           <div className="text-4xl mb-3">💰</div>
           <p className="text-sm">No income recorded yet</p>
           <p className="text-xs text-zinc-600 mt-1">
-            Income is auto-synced when invoice payments are recorded
+            Add income manually or it auto-syncs from invoice payments
           </p>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="mt-3 px-4 py-2 text-xs bg-green-600 text-white font-semibold rounded-lg hover:bg-green-500 transition-colors"
+          >
+            + Add Income
+          </button>
         </div>
       ) : (
         <div className="divide-y divide-zinc-800/50">
           {incomeTransactions.map((t) => {
             const statusConfig = TRANSACTION_STATUS_CONFIG[t.status];
             const isSelected = t.id === selectedId;
+            const isFromInvoice = !!(t.invoice_id || t.invoice_payment_id);
+            const isTransfer = t.tags?.includes('transfer');
 
             return (
               <div
@@ -84,9 +103,24 @@ export function IncomeList() {
                         Ref: {t.reference_number}
                       </span>
                     )}
-                    {t.invoice_id && (
-                      <span className="text-xs text-blue-400/60">
+                    {isFromInvoice && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400/70">
                         From invoice
+                      </span>
+                    )}
+                    {isTransfer && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400/70">
+                        Transfer
+                      </span>
+                    )}
+                    {!isFromInvoice && !isTransfer && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400/70">
+                        Manual
+                      </span>
+                    )}
+                    {t.context === 'personal' && (
+                      <span className="text-[10px] px-1 py-0.5 rounded bg-green-500/10 text-green-400/60">
+                        Personal
                       </span>
                     )}
                   </div>
@@ -98,6 +132,11 @@ export function IncomeList() {
             );
           })}
         </div>
+      )}
+
+      {/* Create Income Modal */}
+      {showCreateModal && (
+        <CreateIncomeModal onClose={() => setShowCreateModal(false)} />
       )}
     </div>
   );

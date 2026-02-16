@@ -1,0 +1,20 @@
+{
+  "name": "children-book",
+  "displayName": "Children's Picture Book",
+  "description": "Full-bleed illustrations with large text overlays. Perfect for ages 3-8.",
+  "category": "fiction",
+  "tags": ["children", "picture-book", "illustration", "kids"],
+  "defaults": {
+    "dimensions": { "width": 8, "height": 8, "unit": "in" },
+    "margins": { "top": 0.5, "bottom": 0.5, "inner": 0.75, "outer": 0.5 },
+    "bleed": 0.125
+  },
+  "themes": ["whimsical-forest", "ocean-adventure", "candy-pastel"],
+  "defaultTheme": "whimsical-forest",
+  "features": {
+    "pageFlip": true,
+    "pageNumbers": false,
+    "chapters": true,
+    "tableOfContents": false
+  }
+}

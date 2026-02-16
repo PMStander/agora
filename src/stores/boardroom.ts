@@ -13,7 +13,16 @@ interface BoardroomState {
   activeSessionId: string | null;
   currentSpeakingAgentId: string | null;
   isOrchestrating: boolean;
+  isPaused: boolean;
+  waitingForUser: boolean;
+  userRaisedHand: boolean;
   streamingContent: string;
+
+  // Chat mode orchestration (not persisted)
+  chatStreamingByAgent: Record<string, string>; // agentId → streaming text
+  chatStreamingReasoningByAgent: Record<string, string>; // agentId → streaming reasoning
+  chatRespondingAgents: string[]; // agent IDs currently in the response queue
+  isChatSending: boolean;
 
   // Preparation tracking (transient, not persisted)
   prepStatus: Record<string, PrepStatus>;
@@ -22,7 +31,7 @@ interface BoardroomState {
 
   // UI State (persisted)
   selectedSessionId: string | null;
-  activeView: 'meet-the-team' | 'boardroom';
+  activeView: 'meet-the-team' | 'boardroom' | 'growth-log';
   isCreateSessionModalOpen: boolean;
 
   // ─── Session Actions ──────────────────────────────────────
@@ -39,7 +48,18 @@ interface BoardroomState {
   setActiveSessionId: (id: string | null) => void;
   setCurrentSpeakingAgentId: (id: string | null) => void;
   setIsOrchestrating: (val: boolean) => void;
+  setPaused: (val: boolean) => void;
+  setWaitingForUser: (val: boolean) => void;
+  setUserRaisedHand: (val: boolean) => void;
   setStreamingContent: (content: string) => void;
+
+  // ─── Chat Mode Actions ──────────────────────────────────
+  setChatStreamingForAgent: (agentId: string, content: string) => void;
+  clearChatStreamingForAgent: (agentId: string) => void;
+  setChatStreamingReasoningForAgent: (agentId: string, content: string) => void;
+  clearChatStreamingReasoningForAgent: (agentId: string) => void;
+  setChatRespondingAgents: (agentIds: string[]) => void;
+  setIsChatSending: (val: boolean) => void;
 
   // ─── Preparation Actions ──────────────────────────────────
   setPrepStatus: (sessionId: string, status: PrepStatus) => void;
@@ -69,7 +89,16 @@ export const useBoardroomStore = create<BoardroomState>()(
       activeSessionId: null,
       currentSpeakingAgentId: null,
       isOrchestrating: false,
+      isPaused: false,
+      waitingForUser: false,
+      userRaisedHand: false,
       streamingContent: '',
+
+      // Chat mode
+      chatStreamingByAgent: {},
+      chatStreamingReasoningByAgent: {},
+      chatRespondingAgents: [],
+      isChatSending: false,
 
       // Preparation
       prepStatus: {},
@@ -135,7 +164,32 @@ export const useBoardroomStore = create<BoardroomState>()(
       setActiveSessionId: (id) => set({ activeSessionId: id }),
       setCurrentSpeakingAgentId: (id) => set({ currentSpeakingAgentId: id }),
       setIsOrchestrating: (val) => set({ isOrchestrating: val }),
+      setPaused: (val) => set({ isPaused: val }),
+      setWaitingForUser: (val) => set({ waitingForUser: val }),
+      setUserRaisedHand: (val) => set({ userRaisedHand: val }),
       setStreamingContent: (content) => set({ streamingContent: content }),
+
+      // Chat Mode Actions
+      setChatStreamingForAgent: (agentId, content) =>
+        set((state) => ({
+          chatStreamingByAgent: { ...state.chatStreamingByAgent, [agentId]: content },
+        })),
+      clearChatStreamingForAgent: (agentId) =>
+        set((state) => {
+          const { [agentId]: _, ...rest } = state.chatStreamingByAgent;
+          return { chatStreamingByAgent: rest };
+        }),
+      setChatStreamingReasoningForAgent: (agentId, content) =>
+        set((state) => ({
+          chatStreamingReasoningByAgent: { ...state.chatStreamingReasoningByAgent, [agentId]: content },
+        })),
+      clearChatStreamingReasoningForAgent: (agentId) =>
+        set((state) => {
+          const { [agentId]: _, ...rest } = state.chatStreamingReasoningByAgent;
+          return { chatStreamingReasoningByAgent: rest };
+        }),
+      setChatRespondingAgents: (agentIds) => set({ chatRespondingAgents: agentIds }),
+      setIsChatSending: (val) => set({ isChatSending: val }),
 
       // Preparation Actions
       setPrepStatus: (sessionId, status) =>
@@ -205,8 +259,11 @@ export const useSelectedSession = () => {
   return sessions.find((s) => s.id === selectedId) || null;
 };
 
+const EMPTY_MESSAGES: BoardroomMessage[] = [];
+
 export const useSessionMessages = (sessionId: string | null) => {
-  const messages = useBoardroomStore((s) => s.messages);
-  if (!sessionId) return [];
-  return (messages[sessionId] || []).sort((a, b) => a.turn_number - b.turn_number);
+  return useBoardroomStore((s) => {
+    if (!sessionId) return EMPTY_MESSAGES;
+    return s.messages[sessionId] || EMPTY_MESSAGES;
+  });
 };

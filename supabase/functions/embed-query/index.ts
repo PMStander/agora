@@ -41,8 +41,8 @@ serve(async (req) => {
         query_text: query,
         query_embedding: vectorString,
         filter_entity_types: filterTypes,
-        match_limit: searchLimit,
-        similarity_threshold: searchThreshold,
+        match_count: searchLimit,
+        match_threshold: searchThreshold,
       });
 
       if (error) {
@@ -54,8 +54,8 @@ serve(async (req) => {
       const { data, error } = await supabase.rpc('match_entities', {
         query_embedding: vectorString,
         filter_entity_types: filterTypes,
-        match_limit: searchLimit,
-        similarity_threshold: searchThreshold,
+        match_count: searchLimit,
+        match_threshold: searchThreshold,
       });
 
       if (error) {

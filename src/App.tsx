@@ -12,7 +12,8 @@ import { TaskDetail } from './components/mission-control/TaskDetail';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useTheme } from './hooks/useTheme';
 import { useMissionScheduler } from './hooks/useMissionScheduler';
-import { useEmbeddingQueueProcessor } from './hooks/useEmbeddingQueueProcessor';
+// Disabled until entity_embeddings migration is re-enabled
+// import { useEmbeddingQueueProcessor } from './hooks/useEmbeddingQueueProcessor';
 import { useMissionControlStore, useSelectedMission, useSelectedTask } from './stores/missionControl';
 import { useAgentStore } from './stores/agents';
 import { useCrmStore, useSelectedContact, useSelectedCompany, useSelectedDeal } from './stores/crm';
@@ -23,6 +24,8 @@ import { addRetroactiveProof, addRetroactiveProofToAll } from './lib/retroactive
 import { useDocumentCenterStore } from './stores/documentCenter';
 import { NotificationBell } from './components/notifications/NotificationBell';
 import { NotificationToast } from './components/notifications/NotificationToast';
+import { SupabaseHealthBanner } from './components/layout/SupabaseHealthBanner';
+import { GatewayHealthBanner } from './components/layout/GatewayHealthBanner';
 
 // Lazy-load new tabs
 const CrmTab = lazy(() => import('./components/crm/CrmTab').then(m => ({ default: m.CrmTab })));
@@ -78,8 +81,8 @@ function App() {
   useKeyboardShortcuts();
   // Background mission scheduler/runner
   useMissionScheduler();
-  // Background embedding queue processor
-  useEmbeddingQueueProcessor();
+  // Disabled until entity_embeddings migration is re-enabled
+  // useEmbeddingQueueProcessor();
 
   // Dev utilities: Expose proof utilities to window for manual retroactive fixes
   useEffect(() => {
@@ -179,6 +182,9 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
+      {/* Health banners */}
+      <SupabaseHealthBanner />
+      <GatewayHealthBanner />
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Agent Sidebar */}

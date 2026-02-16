@@ -1,0 +1,20 @@
+{
+  "name": "blank",
+  "displayName": "Blank Book",
+  "description": "Empty starting point with just a cover and one content page. Build from scratch.",
+  "category": "creative",
+  "tags": ["blank", "custom", "starter"],
+  "defaults": {
+    "dimensions": { "width": 6, "height": 9, "unit": "in" },
+    "margins": { "top": 0.75, "bottom": 0.75, "inner": 1, "outer": 0.75 },
+    "bleed": 0
+  },
+  "themes": ["modern-sans", "classic-literary", "clean-monochrome"],
+  "defaultTheme": "modern-sans",
+  "features": {
+    "pageFlip": true,
+    "pageNumbers": true,
+    "chapters": false,
+    "tableOfContents": false
+  }
+}

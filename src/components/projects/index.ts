@@ -14,3 +14,4 @@ export { CodebaseCard } from './CodebaseCard';
 export { AddCodebaseModal } from './AddCodebaseModal';
 export { ProjectWorkspaceContext } from './ProjectWorkspaceContext';
 export { ContextDocEditor } from './ContextDocEditor';
+export { ProjectChatTab } from './ProjectChatTab';

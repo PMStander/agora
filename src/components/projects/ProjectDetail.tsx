@@ -1,10 +1,11 @@
-import { useEffect, Suspense, lazy } from 'react';
+import { useEffect, useMemo, Suspense, lazy } from 'react';
 import {
   useProjectsStore,
   useSelectedProject,
   PROJECT_STATUS_CONFIG,
   type WorkspaceTab,
 } from '../../stores/projects';
+import { useProjectAgents } from '../../hooks/useProjectAgents';
 
 // Lazy-loaded tab content
 const ProjectWorkspaceOverview = lazy(() =>
@@ -22,11 +23,15 @@ const ProjectWorkspaceContext = lazy(() =>
 const ProjectWorkspaceSettings = lazy(() =>
   import('./ProjectWorkspaceSettings').then((m) => ({ default: m.ProjectWorkspaceSettings }))
 );
+const ProjectChatTab = lazy(() =>
+  import('./ProjectChatTab').then((m) => ({ default: m.ProjectChatTab }))
+);
 
 // ─── Tab Config ─────────────────────────────────────────────────────────────
 
 const WORKSPACE_TABS: Array<{ id: WorkspaceTab; label: string; icon: string }> = [
   { id: 'overview', label: 'Overview', icon: '\uD83D\uDCCA' },
+  { id: 'chat', label: 'Chat', icon: '\uD83D\uDCAC' },
   { id: 'missions', label: 'Missions', icon: '\uD83D\uDE80' },
   { id: 'files', label: 'Files', icon: '\uD83D\uDCCE' },
   { id: 'context', label: 'Context', icon: '\uD83D\uDCD6' },
@@ -59,6 +64,11 @@ export function ProjectDetail() {
   const workspaceTab = useProjectsStore((s) => s.workspaceTab);
   const setWorkspaceTab = useProjectsStore((s) => s.setWorkspaceTab);
   const setActiveProjectForChat = useProjectsStore((s) => s.setActiveProjectForChat);
+  const { assignments } = useProjectAgents(project?.id ?? null);
+  const projectAgentIds = useMemo(
+    () => assignments.map((a) => a.agent_id),
+    [assignments]
+  );
 
   // Auto-select this project as active chat context
   useEffect(() => {
@@ -118,15 +128,24 @@ export function ProjectDetail() {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto p-4">
-        <Suspense fallback={<TabLoadingFallback />}>
-          {workspaceTab === 'overview' && <ProjectWorkspaceOverview project={project} />}
-          {workspaceTab === 'missions' && <ProjectWorkspaceMissions project={project} />}
-          {workspaceTab === 'files' && <ProjectWorkspaceFiles project={project} />}
-          {workspaceTab === 'context' && <ProjectWorkspaceContext project={project} />}
-          {workspaceTab === 'settings' && <ProjectWorkspaceSettings project={project} />}
-        </Suspense>
-      </div>
+      {workspaceTab === 'chat' ? (
+        /* Chat tab manages its own scrolling and layout */
+        <div className="flex-1 min-h-0">
+          <Suspense fallback={<TabLoadingFallback />}>
+            <ProjectChatTab project={project} projectAgentIds={projectAgentIds} />
+          </Suspense>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto p-4">
+          <Suspense fallback={<TabLoadingFallback />}>
+            {workspaceTab === 'overview' && <ProjectWorkspaceOverview project={project} />}
+            {workspaceTab === 'missions' && <ProjectWorkspaceMissions project={project} />}
+            {workspaceTab === 'files' && <ProjectWorkspaceFiles project={project} />}
+            {workspaceTab === 'context' && <ProjectWorkspaceContext project={project} />}
+            {workspaceTab === 'settings' && <ProjectWorkspaceSettings project={project} />}
+          </Suspense>
+        </div>
+      )}
     </div>
   );
 }

@@ -259,7 +259,7 @@ class OpenClawClient {
           this.connectPromise = null;
           this.connectPromiseReject = null;
           reject(new Error('Connection timeout'));
-        }, 10000);
+        }, 30000);
 
         this.ws.onopen = () => {
           console.log('[OpenClaw] WebSocket opened, waiting for challenge...');
@@ -394,10 +394,10 @@ class OpenClawClient {
             const delay = base + jitter;
             this._reconnectAttempt += 1;
             
-            const attemptsDisplay = this.maxReconnectAttempts === Infinity 
-              ? `${this._reconnectAttempt}` 
-              : `${this._reconnectAttempt}/${this.maxReconnectAttempts}`;
-            console.log(`[OpenClaw] Reconnect attempt ${attemptsDisplay} in ${delay}ms`);
+            // Only log first few attempts and then every 10th to reduce console noise
+            if (this._reconnectAttempt <= 3 || this._reconnectAttempt % 10 === 0) {
+              console.log(`[OpenClaw] Reconnect attempt ${this._reconnectAttempt} in ${delay}ms`);
+            }
             
             this.reconnectTimeout = setTimeout(() => {
               this.connect()
@@ -409,9 +409,8 @@ class OpenClawClient {
                     this.reconnectHandlers.forEach(h => h());
                   }
                 })
-                .catch((err) => {
-                  console.error('[OpenClaw] Reconnect failed:', err);
-                  // Error will be logged, next retry scheduled by onclose
+                .catch(() => {
+                  // Silently retry — onclose handler schedules next attempt
                 });
             }, delay);
           } else {

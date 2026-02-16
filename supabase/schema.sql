@@ -1742,7 +1742,7 @@ CREATE TABLE IF NOT EXISTS crm_documents (
   title TEXT NOT NULL,
   description TEXT,
   doc_type TEXT NOT NULL DEFAULT 'file'
-    CHECK (doc_type IN ('file', 'contract', 'proposal', 'nda', 'sow', 'invoice_pdf', 'other')),
+    CHECK (doc_type IN ('file', 'contract', 'proposal', 'nda', 'sow', 'invoice_pdf', 'pdf', 'video', 'other')),
   status TEXT NOT NULL DEFAULT 'active'
     CHECK (status IN ('active', 'archived', 'expired')),
   storage_path TEXT NOT NULL,

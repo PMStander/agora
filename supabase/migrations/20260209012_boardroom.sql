@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS boardroom_sessions (
   session_type TEXT NOT NULL DEFAULT 'custom'
     CHECK (session_type IN ('standup', 'task_review', 'strategy', 'brainstorm', 'watercooler', 'debate', 'war_room', 'custom')),
   status TEXT NOT NULL DEFAULT 'open'
-    CHECK (status IN ('scheduled', 'open', 'active', 'closed')),
+    CHECK (status IN ('scheduled', 'preparing', 'open', 'active', 'closed')),
   participant_agent_ids TEXT[] NOT NULL DEFAULT '{}',
   current_turn_agent_id TEXT,
   turn_count INTEGER NOT NULL DEFAULT 0,

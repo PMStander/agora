@@ -113,7 +113,7 @@ export function EmailAccountSetup() {
           <h4 className="text-sm font-medium text-zinc-200 mb-2">Connect Gmail</h4>
           {!isGmailConfigured() ? (
             <p className="text-xs text-zinc-500">
-              Gmail not configured. Set VITE_GMAIL_CLIENT_ID and VITE_GMAIL_CLIENT_SECRET
+              Gmail not configured. Set VITE_GMAIL_CLIENT_ID and VITE_GOOGLE_OAUTH_CLIENT_SECRET
               in your .env file.
             </p>
           ) : showAuthInput ? (

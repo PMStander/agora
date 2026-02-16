@@ -1,5 +1,6 @@
 const GEMINI_MODEL = 'gemini-embedding-001';
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+const OUTPUT_DIMENSIONALITY = 768; // Match entity_embeddings vector(768) column
 
 interface GeminiEmbedResponse {
   embedding: {
@@ -23,6 +24,7 @@ async function callGeminiEmbed(text: string, taskType: string): Promise<number[]
         model: `models/${GEMINI_MODEL}`,
         content: { parts: [{ text: truncated }] },
         taskType,
+        outputDimensionality: OUTPUT_DIMENSIONALITY,
       }),
     }
   );

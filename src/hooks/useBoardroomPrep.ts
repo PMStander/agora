@@ -99,8 +99,7 @@ function buildPrepPrompt(
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
 export function useBoardroomPrep() {
-  const store = useBoardroomStore();
-  const agentProfiles = useAgentStore((s) => s.agentProfiles);
+  // No whole-store subscription — access via getState() in callbacks.
   const cancelRef = useRef(false);
 
   const runResearchPrep = useCallback(
@@ -109,7 +108,7 @@ export function useBoardroomPrep() {
       assignment: PrepAssignment,
       context: { title: string; topic: string; entityRefs: EntityReference[]; attachments: MediaAttachment[] }
     ): Promise<PrepResult> => {
-      const agent = agentProfiles[assignment.agent_id];
+      const agent = useAgentStore.getState().agentProfiles[assignment.agent_id];
       if (!agent) {
         return { agent_id: assignment.agent_id, status: 'error', text: '', error: 'Agent not found' };
       }
@@ -127,7 +126,7 @@ export function useBoardroomPrep() {
       const acceptedRunIds = new Set<string>([idempotencyKey]);
 
       // Initialize streaming for this agent
-      store.setPrepStreamingContent(sessionId, assignment.agent_id, '');
+      useBoardroomStore.getState().setPrepStreamingContent(sessionId, assignment.agent_id, '');
 
       return new Promise<PrepResult>((resolve) => {
         let streamBuffer = '';
@@ -143,7 +142,7 @@ export function useBoardroomPrep() {
             const text = extractText(payload.message);
             if (text) {
               streamBuffer = mergeDeltaBuffer(streamBuffer, text);
-              store.setPrepStreamingContent(sessionId, assignment.agent_id, streamBuffer);
+              useBoardroomStore.getState().setPrepStreamingContent(sessionId, assignment.agent_id, streamBuffer);
             }
           }
 
@@ -210,7 +209,7 @@ export function useBoardroomPrep() {
         });
       });
     },
-    [agentProfiles, store]
+    []
   );
 
   const runMissionPrep = useCallback(
@@ -223,7 +222,8 @@ export function useBoardroomPrep() {
         return { agent_id: assignment.agent_id, status: 'error', text: '', error: 'Supabase not configured' };
       }
 
-      const agent = agentProfiles[assignment.agent_id];
+      const currentProfiles = useAgentStore.getState().agentProfiles;
+      const agent = currentProfiles[assignment.agent_id];
       const agentLabel = agent ? `${agent.name}` : assignment.agent_id;
 
       const inputText = [
@@ -266,7 +266,7 @@ export function useBoardroomPrep() {
       // If delegate_to agents specified, create sub-missions
       if (assignment.delegate_to?.length) {
         for (const delegateId of assignment.delegate_to) {
-          const delegateAgent = agentProfiles[delegateId];
+          const delegateAgent = currentProfiles[delegateId];
           const delegateLabel = delegateAgent ? delegateAgent.name : delegateId;
           await supabase.from('missions').insert({
             title: `Prep assist: ${context.title} — ${delegateLabel}`,
@@ -291,7 +291,7 @@ export function useBoardroomPrep() {
         completed_at: new Date().toISOString(),
       };
     },
-    [agentProfiles]
+    []
   );
 
   const startPreparation = useCallback(
@@ -301,7 +301,7 @@ export function useBoardroomPrep() {
       context: { title: string; topic: string; entityRefs: EntityReference[]; attachments: MediaAttachment[] }
     ) => {
       cancelRef.current = false;
-      store.setPrepStatus(sessionId, 'running');
+      useBoardroomStore.getState().setPrepStatus(sessionId, 'running');
 
       createNotificationDirect(
         'system',
@@ -311,7 +311,7 @@ export function useBoardroomPrep() {
 
       // Initialize pending results
       for (const assignment of assignments) {
-        store.addPrepResult(sessionId, {
+        useBoardroomStore.getState().addPrepResult(sessionId, {
           agent_id: assignment.agent_id,
           status: 'running',
           text: '',
@@ -329,7 +329,7 @@ export function useBoardroomPrep() {
           : await runResearchPrep(sessionId, assignment, context);
 
         // Update store with individual result
-        store.updatePrepResult(sessionId, assignment.agent_id, result);
+        useBoardroomStore.getState().updatePrepResult(sessionId, assignment.agent_id, result);
         return result;
       });
 
@@ -341,7 +341,7 @@ export function useBoardroomPrep() {
       );
 
       // Update session metadata with prep results
-      const session = store.sessions.find((s) => s.id === sessionId);
+      const session = useBoardroomStore.getState().sessions.find((s) => s.id === sessionId);
       if (session) {
         const currentMetadata = (session.metadata || {}) as BoardroomSessionMetadata;
         const updatedMetadata: BoardroomSessionMetadata = {
@@ -363,13 +363,13 @@ export function useBoardroomPrep() {
           })
           .eq('id', sessionId);
 
-        store.updateSession(sessionId, {
+        useBoardroomStore.getState().updateSession(sessionId, {
           metadata: updatedMetadata,
           status: 'open',
         });
       }
 
-      store.setPrepStatus(sessionId, 'completed');
+      useBoardroomStore.getState().setPrepStatus(sessionId, 'completed');
 
       createNotificationDirect(
         'system',
@@ -377,23 +377,24 @@ export function useBoardroomPrep() {
         `${prepResults.filter((r) => r.status === 'completed').length}/${assignments.length} tasks completed. Session is ready.`,
       ).catch(() => {});
     },
-    [store, runResearchPrep, runMissionPrep]
+    [runResearchPrep, runMissionPrep]
   );
 
   const cancelPreparation = useCallback(
     async (sessionId: string) => {
       cancelRef.current = true;
-      store.setPrepStatus(sessionId, 'error');
+      const s = useBoardroomStore.getState();
+      s.setPrepStatus(sessionId, 'error');
 
       await supabase
         .from('boardroom_sessions')
         .update({ status: 'open', updated_at: new Date().toISOString() })
         .eq('id', sessionId);
 
-      store.updateSession(sessionId, { status: 'open' });
-      store.clearPrep(sessionId);
+      s.updateSession(sessionId, { status: 'open' });
+      s.clearPrep(sessionId);
     },
-    [store]
+    []
   );
 
   return { startPreparation, cancelPreparation };

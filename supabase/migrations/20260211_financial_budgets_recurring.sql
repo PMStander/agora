@@ -224,11 +224,11 @@ $$;
 -- ║  4. REALTIME PUBLICATION                                                   ║
 -- ═══════════════════════════════════════════════════════════════════════════════
 
-ALTER PUBLICATION supabase_realtime ADD TABLE budgets;
-ALTER PUBLICATION supabase_realtime ADD TABLE financial_goals;
-ALTER PUBLICATION supabase_realtime ADD TABLE goal_contributions;
-ALTER PUBLICATION supabase_realtime ADD TABLE recurring_items;
-ALTER PUBLICATION supabase_realtime ADD TABLE recurring_item_history;
+DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE budgets; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE financial_goals; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE goal_contributions; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE recurring_items; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE recurring_item_history; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- ║  5. SQL VIEWS                                                              ║

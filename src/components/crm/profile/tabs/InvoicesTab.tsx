@@ -1,6 +1,7 @@
 import { useCrmStore } from '../../../../stores/crm';
 import { useInvoicesForDeal, useInvoicesForContact, useInvoicesForCompany } from '../../../../stores/invoicing';
 import { ProfileEmptyState } from '../ProfileEmptyState';
+import { TabHeader } from './TabHeader';
 import { INVOICE_STATUS_CONFIG } from '../../../../types/invoicing';
 
 function formatCurrency(amount: number | null, currency = 'USD'): string {
@@ -42,11 +43,11 @@ export default function InvoicesTab({ entityType, entityId }: { entityType: stri
     entityType === 'contact' ? contactInvoices :
     companyInvoices;
 
-  if (!invoices.length) return <ProfileEmptyState message="No invoices yet" />;
+  if (!invoices.length) return <ProfileEmptyState message="No invoices yet — create one from a quote" />;
 
   return (
     <div>
-      <p className="text-xs text-zinc-500 mb-3">{invoices.length} invoice{invoices.length !== 1 ? 's' : ''}</p>
+      <TabHeader count={invoices.length} noun="invoice" />
       <div className="space-y-2">
         {invoices.map(invoice => {
           const statusCfg = INVOICE_STATUS_CONFIG[invoice.status];

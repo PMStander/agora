@@ -674,6 +674,13 @@ export function useInvoicing() {
 
       // Auto-sync: create a financial_transaction for this income
       if (payment) {
+        // Route to default business bank account
+        const { useFinancialStore } = await import('../stores/financial');
+        const bankAccounts = useFinancialStore.getState().bankAccounts;
+        const defaultBizAccount = bankAccounts.find(
+          (a) => a.is_active && a.is_default && (a.context === 'business' || a.context === 'both')
+        );
+
         const { error: ftError } = await supabase
           .from('financial_transactions')
           .insert({
@@ -684,6 +691,8 @@ export function useInvoicing() {
             invoice_payment_id: (payment as InvoicePayment).id,
             invoice_id: invoiceId,
             deal_id: invoice?.deal_id || null,
+            bank_account_id: defaultBizAccount?.id || null,
+            context: 'business',
             description: invoice
               ? `Payment for Invoice ${invoice.invoice_number}`
               : 'Invoice payment',

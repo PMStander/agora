@@ -7,10 +7,68 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 // Using any for flexibility - types enforced at application layer
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Check if Supabase is configured
+// Check if Supabase is configured (env vars present)
 export const isSupabaseConfigured = () => {
   return supabaseUrl !== '' && supabaseKey !== '';
 };
+
+// ─── Health Check ──────────────────────────────────────────────────────────
+
+type SupabaseHealth = {
+  reachable: boolean;
+  latencyMs: number;
+  error?: string;
+};
+
+let _lastHealth: SupabaseHealth = { reachable: false, latencyMs: 0 };
+let _healthListeners: Array<(h: SupabaseHealth) => void> = [];
+
+/** Subscribe to health changes. Returns unsubscribe function. */
+export function onHealthChange(fn: (h: SupabaseHealth) => void) {
+  _healthListeners.push(fn);
+  // Immediately fire with current state
+  fn(_lastHealth);
+  return () => {
+    _healthListeners = _healthListeners.filter((f) => f !== fn);
+  };
+}
+
+export function getSupabaseHealth(): SupabaseHealth {
+  return _lastHealth;
+}
+
+/** Ping Supabase and update health state. */
+export async function checkSupabaseHealth(): Promise<SupabaseHealth> {
+  if (!isSupabaseConfigured()) {
+    const h: SupabaseHealth = { reachable: false, latencyMs: 0, error: 'Not configured' };
+    _lastHealth = h;
+    _healthListeners.forEach((fn) => fn(h));
+    return h;
+  }
+
+  const start = performance.now();
+  try {
+    // Lightweight query — just check if we can reach Postgres
+    const { error } = await supabase.from('agents').select('id', { count: 'exact', head: true });
+    const latencyMs = Math.round(performance.now() - start);
+    const h: SupabaseHealth = error
+      ? { reachable: false, latencyMs, error: error.message }
+      : { reachable: true, latencyMs };
+    _lastHealth = h;
+    _healthListeners.forEach((fn) => fn(h));
+    return h;
+  } catch (err) {
+    const latencyMs = Math.round(performance.now() - start);
+    const h: SupabaseHealth = {
+      reachable: false,
+      latencyMs,
+      error: err instanceof Error ? err.message : 'Connection failed',
+    };
+    _lastHealth = h;
+    _healthListeners.forEach((fn) => fn(h));
+    return h;
+  }
+}
 
 // ─── Real-time Subscriptions ────────────────────────────────────────────────
 

@@ -237,19 +237,12 @@ async function buildWorkflowSequence(id: string, sb: SupabaseClient): Promise<st
   return lines.join('\n');
 }
 
-async function buildDocument(id: string, sb: SupabaseClient): Promise<string> {
-  const { data } = await sb.from('documents').select('*').eq('id', id).single();
-  if (!data) return '';
-  const lines: string[] = [header('document', data.title)];
-  addField(lines, 'Content', data.content);
-  return lines.join('\n');
-}
-
 async function buildCrmDocument(id: string, sb: SupabaseClient): Promise<string> {
   const { data } = await sb.from('crm_documents').select('*').eq('id', id).single();
   if (!data) return '';
   const lines: string[] = [header('crm_document', data.title)];
   addField(lines, 'Description', data.description);
+  addField(lines, 'Content', data.content);
   return lines.join('\n');
 }
 
@@ -315,7 +308,7 @@ const BUILDERS: Record<string, BuilderFn> = {
   calendar_event: buildCalendarEvent,
   workflow: buildWorkflow,
   workflow_sequence: buildWorkflowSequence,
-  document: buildDocument,
+  document: buildCrmDocument,
   crm_document: buildCrmDocument,
   agent: buildAgent,
   boardroom_message: buildBoardroomMessage,

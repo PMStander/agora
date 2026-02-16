@@ -1,6 +1,6 @@
 // ─── CRM Document Types ─────────────────────────────────────────────────────
 
-export type DocType = 'file' | 'contract' | 'proposal' | 'nda' | 'sow' | 'invoice_pdf' | 'other';
+export type DocType = 'file' | 'contract' | 'proposal' | 'nda' | 'sow' | 'invoice_pdf' | 'pdf' | 'video' | 'other';
 
 export type DocStatus = 'active' | 'archived' | 'expired';
 
@@ -45,6 +45,8 @@ export const DOC_TYPE_CONFIG: Record<DocType, DocTypeConfig> = {
   nda: { label: 'NDA', icon: '\uD83D\uDD12', color: 'red' },
   sow: { label: 'SOW', icon: '\uD83D\uDCC5', color: 'purple' },
   invoice_pdf: { label: 'Invoice PDF', icon: '\uD83E\uDDFE', color: 'green' },
+  pdf: { label: 'PDF', icon: '\uD83D\uDCC4', color: 'rose' },
+  video: { label: 'Video', icon: '\uD83C\uDFAC', color: 'indigo' },
   other: { label: 'Other', icon: '\uD83D\uDCCE', color: 'zinc' },
 };
 

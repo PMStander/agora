@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useFinancial } from '../../hooks/useFinancial';
-import { useActiveCategories, useActiveBankAccounts } from '../../stores/financial';
+import { useActiveCategories, useAllActiveBankAccounts } from '../../stores/financial';
 import type { RecurringItem, RecurringItemType, RecurringFrequency, FinancialContext } from '../../types/financial';
 
 interface RecurringItemFormProps {
@@ -11,7 +11,7 @@ interface RecurringItemFormProps {
 export function RecurringItemForm({ editItem, onClose }: RecurringItemFormProps) {
   const { createRecurringItem, updateRecurringItem } = useFinancial();
   const categories = useActiveCategories();
-  const bankAccounts = useActiveBankAccounts();
+  const bankAccounts = useAllActiveBankAccounts();
   const isEditing = !!editItem;
 
   const [itemType, setItemType] = useState<RecurringItemType>(editItem?.item_type ?? 'expense');
@@ -38,8 +38,31 @@ export function RecurringItemForm({ editItem, onClose }: RecurringItemFormProps)
 
   const parsedAmount = parseFloat(amount) || 0;
 
+  // Filter accounts by context
+  const contextAccounts = bankAccounts.filter(
+    (a) => a.context === context || a.context === 'both'
+  );
+
+  // Auto-select default account when context changes (only if not editing with existing value)
+  useEffect(() => {
+    if (isEditing && editItem?.bank_account_id) return;
+    const defaultAcc = contextAccounts.find((a) => a.is_default);
+    if (defaultAcc) {
+      setBankAccountId(defaultAcc.id);
+    } else if (contextAccounts.length > 0) {
+      setBankAccountId(contextAccounts[0].id);
+    } else {
+      setBankAccountId('');
+    }
+  }, [context]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Validation: account required when auto-create is on
+  const accountRequired = autoCreate;
+  const accountMissing = accountRequired && !bankAccountId;
+
   const handleSubmit = async () => {
     if (!name.trim() || parsedAmount <= 0) return;
+    if (accountMissing) return;
     setSaving(true);
 
     const input = {
@@ -211,22 +234,71 @@ export function RecurringItemForm({ editItem, onClose }: RecurringItemFormProps)
             </div>
           </div>
 
-          {/* Bank Account */}
-          {bankAccounts.length > 0 && (
+          {/* Context + Auto-create */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-zinc-400 mb-1">Account</label>
+              <label className="block text-xs text-zinc-400 mb-1">Context</label>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setContext('business')}
+                  className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors
+                    ${context === 'business' ? 'bg-blue-500/20 text-blue-400' : 'text-zinc-500 bg-zinc-800'}
+                  `}
+                >
+                  Business
+                </button>
+                <button
+                  onClick={() => setContext('personal')}
+                  className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors
+                    ${context === 'personal' ? 'bg-green-500/20 text-green-400' : 'text-zinc-500 bg-zinc-800'}
+                  `}
+                >
+                  Personal
+                </button>
+              </div>
+            </div>
+            <div className="flex items-end pb-2">
+              <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoCreate}
+                  onChange={(e) => setAutoCreate(e.target.checked)}
+                  className="rounded border-zinc-600"
+                />
+                Auto-create transaction
+              </label>
+            </div>
+          </div>
+
+          {/* Bank Account - always shown */}
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1">
+              Account{accountRequired ? ' *' : ''}
+            </label>
+            {contextAccounts.length === 0 && bankAccounts.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-zinc-500 bg-zinc-800/50 border border-zinc-700/50 rounded-lg">
+                No accounts set up. Create one in the Accounts tab.
+              </div>
+            ) : (
               <select
                 value={bankAccountId}
                 onChange={(e) => setBankAccountId(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 focus:border-amber-500 focus:outline-none"
+                className={`w-full px-3 py-2 text-sm bg-zinc-800 border rounded-lg text-zinc-200 focus:outline-none ${
+                  accountMissing ? 'border-red-500/50 focus:border-red-500' : 'border-zinc-700 focus:border-amber-500'
+                }`}
               >
                 <option value="">No account</option>
-                {bankAccounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>{acc.name} ({acc.currency})</option>
+                {contextAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>{acc.name} ({acc.currency}){acc.is_default ? ' - Default' : ''}</option>
                 ))}
               </select>
-            </div>
-          )}
+            )}
+            {accountMissing && (
+              <p className="text-[10px] text-red-400 mt-1">
+                Account required when auto-create is enabled
+              </p>
+            )}
+          </div>
 
           {/* Retainer-specific fields */}
           {itemType === 'retainer' && (
@@ -258,42 +330,6 @@ export function RecurringItemForm({ editItem, onClose }: RecurringItemFormProps)
             </div>
           )}
 
-          {/* Context + Auto-create */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-zinc-400 mb-1">Context</label>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setContext('business')}
-                  className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors
-                    ${context === 'business' ? 'bg-blue-500/20 text-blue-400' : 'text-zinc-500 bg-zinc-800'}
-                  `}
-                >
-                  💼 Business
-                </button>
-                <button
-                  onClick={() => setContext('personal')}
-                  className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors
-                    ${context === 'personal' ? 'bg-green-500/20 text-green-400' : 'text-zinc-500 bg-zinc-800'}
-                  `}
-                >
-                  👤 Personal
-                </button>
-              </div>
-            </div>
-            <div className="flex items-end pb-2">
-              <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoCreate}
-                  onChange={(e) => setAutoCreate(e.target.checked)}
-                  className="rounded border-zinc-600"
-                />
-                Auto-create transaction
-              </label>
-            </div>
-          </div>
-
           {/* Notes */}
           <div>
             <label className="block text-xs text-zinc-400 mb-1">Notes</label>
@@ -317,7 +353,7 @@ export function RecurringItemForm({ editItem, onClose }: RecurringItemFormProps)
           </button>
           <button
             onClick={handleSubmit}
-            disabled={saving || !name.trim() || parsedAmount <= 0}
+            disabled={saving || !name.trim() || parsedAmount <= 0 || accountMissing}
             className="px-4 py-2 text-sm bg-amber-500 text-zinc-900 font-semibold rounded-lg hover:bg-amber-400 disabled:opacity-50 transition-colors"
           >
             {saving ? 'Saving...' : isEditing ? 'Update' : 'Create'}

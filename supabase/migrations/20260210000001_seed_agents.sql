@@ -3,6 +3,11 @@
 -- Uses ON CONFLICT to be idempotent (safe to re-run)
 -- ============================================================================
 
+-- Ensure persona column exists (may be missing if agents table was created
+-- by an older migration that didn't include it)
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS persona TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS avatar TEXT;
+
 INSERT INTO agents (id, name, role, emoji, persona, team, provider, model, skills, domains, availability)
 VALUES
   -- ── Orchestrator ──────────────────────────────────────────────────────────

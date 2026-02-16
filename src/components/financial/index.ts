@@ -3,6 +3,8 @@ export { FinancialDashboard } from './FinancialDashboard';
 export { IncomeList } from './IncomeList';
 export { ExpenseList } from './ExpenseList';
 export { CreateExpenseModal } from './CreateExpenseModal';
+export { CreateIncomeModal } from './CreateIncomeModal';
+export { CreateTransferModal } from './CreateTransferModal';
 export { AccountList } from './AccountList';
 export { TaxRatesPanel } from './TaxRatesPanel';
 export { TransactionDetail } from './TransactionDetail';

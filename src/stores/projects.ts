@@ -4,7 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed' | 'cancelled';
-export type WorkspaceTab = 'overview' | 'missions' | 'files' | 'context' | 'settings';
+export type WorkspaceTab = 'overview' | 'chat' | 'missions' | 'files' | 'context' | 'settings';
 
 export interface Project {
   id: string;
@@ -137,6 +137,24 @@ export const useSelectedProject = () => {
   const projects = useProjectsStore((s) => s.projects);
   const selectedId = useProjectsStore((s) => s.selectedProjectId);
   return projects.find((p) => p.id === selectedId) || null;
+};
+
+export const useProjectsByContact = (contactId: string | null) => {
+  const projects = useProjectsStore((s) => s.projects);
+  if (!contactId) return [];
+  return projects.filter((p) => p.contact_id === contactId);
+};
+
+export const useProjectsByCompany = (companyId: string | null) => {
+  const projects = useProjectsStore((s) => s.projects);
+  if (!companyId) return [];
+  return projects.filter((p) => p.company_id === companyId);
+};
+
+export const useProjectsByDeal = (dealId: string | null) => {
+  const projects = useProjectsStore((s) => s.projects);
+  if (!dealId) return [];
+  return projects.filter((p) => p.deal_id === dealId);
 };
 
 export const useFilteredProjects = () => {

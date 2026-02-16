@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useFinancialStore, useActiveGoals, useCurrentBudgets } from '../../stores/financial';
+import { useFinancialStore, useActiveGoals, useCurrentBudgets, useContextFilteredTransactions } from '../../stores/financial';
 import { useFinancialReports } from '../../hooks/useFinancialReports';
 import { useRecurringProcessor } from '../../hooks/useRecurringProcessor';
 import { TRANSACTION_TYPE_CONFIG } from '../../types/financial';
@@ -10,25 +10,53 @@ import {
 
 const CHART_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#06b6d4', '#ec4899'];
 
+function computeMonthPL(txns: { transaction_type: string; status: string; amount: number; transaction_date: string }[]) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const monthStart = new Date(year, month, 1).toISOString();
+  const monthEnd = new Date(year, month + 1, 1).toISOString();
+
+  let income = 0;
+  let expenses = 0;
+  for (const t of txns) {
+    if (t.status === 'void') continue;
+    if (t.transaction_date < monthStart || t.transaction_date >= monthEnd) continue;
+    if (t.transaction_type === 'income') income += t.amount;
+    else if (t.transaction_type === 'expense') expenses += t.amount;
+  }
+  return { total_income: income, total_expenses: expenses, net_profit: income - expenses };
+}
+
 export function FinancialDashboard() {
   // Process due recurring items on mount
   useRecurringProcessor();
 
   const bankAccounts = useFinancialStore((s) => s.bankAccounts);
-  const transactions = useFinancialStore((s) => s.transactions);
+  const allTransactions = useFinancialStore((s) => s.transactions);
+  const contextTransactions = useContextFilteredTransactions();
   const categories = useFinancialStore((s) => s.categories);
   const recurringItems = useFinancialStore((s) => s.recurringItems);
+  const financialContext = useFinancialStore((s) => s.financialContext);
   const goals = useActiveGoals();
   const budgets = useCurrentBudgets();
 
   const { profitLoss, expensesByCategory, receivablesAging, cashFlow, loading } =
     useFinancialReports();
 
-  // ── Derived KPIs ───────────────────────────────────────────────────────────
+  const isAllContext = financialContext === 'all';
+
+  // ── Context-aware KPIs ──────────────────────────────────────────────────────
+
+  const contextAccounts = useMemo(() => {
+    const active = bankAccounts.filter((a) => a.is_active);
+    if (financialContext === 'all') return active;
+    return active.filter((a) => a.context === financialContext || a.context === 'both');
+  }, [bankAccounts, financialContext]);
 
   const cashPosition = useMemo(
-    () => bankAccounts.filter((a) => a.is_active).reduce((sum, a) => sum + a.current_balance, 0),
-    [bankAccounts]
+    () => contextAccounts.reduce((sum, a) => sum + a.current_balance, 0),
+    [contextAccounts]
   );
 
   const outstandingReceivables = useMemo(
@@ -36,15 +64,37 @@ export function FinancialDashboard() {
     [receivablesAging]
   );
 
-  const currentMonthPL = useMemo(() => {
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    return profitLoss.find((r) => r.month?.startsWith(currentMonth)) || {
-      total_income: 0,
-      total_expenses: 0,
-      net_profit: 0,
-    };
-  }, [profitLoss]);
+  // Client-side P&L from context-filtered transactions
+  const currentMonthPL = useMemo(
+    () => computeMonthPL(contextTransactions),
+    [contextTransactions]
+  );
+
+  // Per-context P&L for "All" dual-row display
+  const businessPL = useMemo(() => {
+    if (!isAllContext) return null;
+    return computeMonthPL(allTransactions.filter((t) => t.context === 'business'));
+  }, [allTransactions, isAllContext]);
+
+  const personalPL = useMemo(() => {
+    if (!isAllContext) return null;
+    return computeMonthPL(allTransactions.filter((t) => t.context === 'personal'));
+  }, [allTransactions, isAllContext]);
+
+  // Per-context cash positions for "All" view
+  const businessCash = useMemo(() => {
+    if (!isAllContext) return 0;
+    return bankAccounts
+      .filter((a) => a.is_active && (a.context === 'business' || a.context === 'both'))
+      .reduce((sum, a) => sum + a.current_balance, 0);
+  }, [bankAccounts, isAllContext]);
+
+  const personalCash = useMemo(() => {
+    if (!isAllContext) return 0;
+    return bankAccounts
+      .filter((a) => a.is_active && (a.context === 'personal' || a.context === 'both'))
+      .reduce((sum, a) => sum + a.current_balance, 0);
+  }, [bankAccounts, isAllContext]);
 
   const overdueAmount = useMemo(
     () => receivablesAging.reduce((sum, r) => sum + r.days_1_30 + r.days_31_60 + r.days_61_90 + r.days_over_90, 0),
@@ -59,7 +109,7 @@ export function FinancialDashboard() {
     return budgets.slice(0, 4).map((b) => {
       const periodEnd = getPeriodEnd(b.period_start, b.period_type);
       const cat = categories.find((c) => c.id === b.category_id);
-      const spent = transactions
+      const spent = contextTransactions
         .filter(
           (t) =>
             t.transaction_type === 'expense' &&
@@ -81,12 +131,15 @@ export function FinancialDashboard() {
         effective,
       };
     });
-  }, [budgets, transactions, categories]);
+  }, [budgets, contextTransactions, categories]);
 
   // ── Recurring Commitments ────────────────────────────────────────────────
 
   const recurringCommitments = useMemo(() => {
-    const active = recurringItems.filter((i) => i.is_active);
+    let active = recurringItems.filter((i) => i.is_active);
+    if (financialContext !== 'all') {
+      active = active.filter((i) => i.context === financialContext);
+    }
     if (active.length === 0) return null;
 
     const monthlyOut = active
@@ -98,7 +151,7 @@ export function FinancialDashboard() {
     const overdue = active.filter((i) => new Date(i.next_due_date) < new Date());
 
     return { monthlyOut, monthlyIn, net: monthlyIn - monthlyOut, overdueCount: overdue.length, count: active.length };
-  }, [recurringItems]);
+  }, [recurringItems, financialContext]);
 
   // ── Chart data ─────────────────────────────────────────────────────────────
 
@@ -153,11 +206,11 @@ export function FinancialDashboard() {
     ].filter((d) => d.value > 0);
   }, [receivablesAging]);
 
-  // ── Recent transactions ────────────────────────────────────────────────────
+  // ── Recent transactions (context-filtered) ────────────────────────────────
 
   const recentTransactions = useMemo(
-    () => [...transactions].sort((a, b) => b.transaction_date.localeCompare(a.transaction_date)).slice(0, 5),
-    [transactions]
+    () => [...contextTransactions].sort((a, b) => b.transaction_date.localeCompare(a.transaction_date)).slice(0, 5),
+    [contextTransactions]
   );
 
   const fmt = (n: number) =>
@@ -174,19 +227,74 @@ export function FinancialDashboard() {
   return (
     <div className="h-full overflow-y-auto p-6 space-y-6">
       {/* ── KPI Cards ─────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <KpiCard label="Cash Position" value={fmt(cashPosition)} color="blue" prefix="R" />
-        <KpiCard label="Receivables" value={fmt(outstandingReceivables)} color="amber" prefix="R" />
-        <KpiCard label="Revenue (MTD)" value={fmt(Number(currentMonthPL.total_income))} color="green" prefix="R" />
-        <KpiCard label="Expenses (MTD)" value={fmt(Number(currentMonthPL.total_expenses))} color="red" prefix="R" />
-        <KpiCard
-          label="Net Profit"
-          value={fmt(Number(currentMonthPL.net_profit))}
-          color={Number(currentMonthPL.net_profit) >= 0 ? 'green' : 'red'}
-          prefix="R"
-        />
-        <KpiCard label="Overdue" value={fmt(overdueAmount)} color={overdueAmount > 0 ? 'red' : 'zinc'} prefix="R" />
-      </div>
+      {isAllContext && businessPL && personalPL ? (
+        <div className="space-y-3">
+          {/* Business row */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 font-medium">Business</span>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <KpiCard label="Cash" value={fmt(businessCash)} color="blue" prefix="R" size="sm" />
+              <KpiCard label="Revenue (MTD)" value={fmt(businessPL.total_income)} color="green" prefix="R" size="sm" />
+              <KpiCard label="Expenses (MTD)" value={fmt(businessPL.total_expenses)} color="red" prefix="R" size="sm" />
+              <KpiCard
+                label="Net Profit"
+                value={fmt(businessPL.net_profit)}
+                color={businessPL.net_profit >= 0 ? 'green' : 'red'}
+                prefix="R"
+                size="sm"
+              />
+            </div>
+          </div>
+          {/* Personal row */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-400 font-medium">Personal</span>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <KpiCard label="Cash" value={fmt(personalCash)} color="blue" prefix="R" size="sm" />
+              <KpiCard label="Revenue (MTD)" value={fmt(personalPL.total_income)} color="green" prefix="R" size="sm" />
+              <KpiCard label="Expenses (MTD)" value={fmt(personalPL.total_expenses)} color="red" prefix="R" size="sm" />
+              <KpiCard
+                label="Net"
+                value={fmt(personalPL.net_profit)}
+                color={personalPL.net_profit >= 0 ? 'green' : 'red'}
+                prefix="R"
+                size="sm"
+              />
+            </div>
+          </div>
+          {/* Combined totals */}
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 pt-2 border-t border-zinc-800">
+            <KpiCard label="Total Cash" value={fmt(cashPosition)} color="blue" prefix="R" />
+            <KpiCard label="Receivables" value={fmt(outstandingReceivables)} color="amber" prefix="R" />
+            <KpiCard label="Total Revenue" value={fmt(currentMonthPL.total_income)} color="green" prefix="R" />
+            <KpiCard label="Total Expenses" value={fmt(currentMonthPL.total_expenses)} color="red" prefix="R" />
+            <KpiCard
+              label="Combined Net"
+              value={fmt(currentMonthPL.net_profit)}
+              color={currentMonthPL.net_profit >= 0 ? 'green' : 'red'}
+              prefix="R"
+            />
+            <KpiCard label="Overdue" value={fmt(overdueAmount)} color={overdueAmount > 0 ? 'red' : 'zinc'} prefix="R" />
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          <KpiCard label="Cash Position" value={fmt(cashPosition)} color="blue" prefix="R" />
+          <KpiCard label="Receivables" value={fmt(outstandingReceivables)} color="amber" prefix="R" />
+          <KpiCard label="Revenue (MTD)" value={fmt(currentMonthPL.total_income)} color="green" prefix="R" />
+          <KpiCard label="Expenses (MTD)" value={fmt(currentMonthPL.total_expenses)} color="red" prefix="R" />
+          <KpiCard
+            label="Net Profit"
+            value={fmt(currentMonthPL.net_profit)}
+            color={currentMonthPL.net_profit >= 0 ? 'green' : 'red'}
+            prefix="R"
+          />
+          <KpiCard label="Overdue" value={fmt(overdueAmount)} color={overdueAmount > 0 ? 'red' : 'zinc'} prefix="R" />
+        </div>
+      )}
 
       {/* ── Budget Health (conditional) ──────────────────────────────────── */}
       {budgetHealth && budgetHealth.length > 0 && (
@@ -425,9 +533,18 @@ export function FinancialDashboard() {
                     {typeConfig.icon}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-zinc-200 truncate">
-                      {t.description || t.payee_name || typeConfig.label}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-zinc-200 truncate">
+                        {t.description || t.payee_name || typeConfig.label}
+                      </p>
+                      {isAllContext && t.context && (
+                        <span className={`text-[10px] px-1 py-0.5 rounded ${
+                          t.context === 'personal' ? 'bg-green-500/10 text-green-400/60' : 'bg-blue-500/10 text-blue-400/60'
+                        }`}>
+                          {t.context === 'personal' ? 'Personal' : 'Business'}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-zinc-500">
                       {new Date(t.transaction_date).toLocaleDateString()}
                     </p>
@@ -461,11 +578,13 @@ function KpiCard({
   value,
   color,
   prefix = '',
+  size = 'md',
 }: {
   label: string;
   value: string;
   color: string;
   prefix?: string;
+  size?: 'sm' | 'md';
 }) {
   const colorMap: Record<string, string> = {
     green: 'text-green-400',
@@ -476,9 +595,9 @@ function KpiCard({
   };
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+    <div className={`rounded-xl border border-zinc-800 bg-zinc-900/50 ${size === 'sm' ? 'p-3' : 'p-4'}`}>
       <p className="text-xs text-zinc-500 mb-1">{label}</p>
-      <p className={`text-lg font-semibold font-mono ${colorMap[color] || 'text-zinc-200'}`}>
+      <p className={`font-semibold font-mono ${colorMap[color] || 'text-zinc-200'} ${size === 'sm' ? 'text-sm' : 'text-lg'}`}>
         {prefix}{value}
       </p>
     </div>

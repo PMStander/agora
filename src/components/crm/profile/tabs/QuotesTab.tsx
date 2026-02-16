@@ -1,6 +1,7 @@
 import { useCrmStore } from '../../../../stores/crm';
 import { useQuotesForDeal, useQuotesForContact, useQuotesForCompany } from '../../../../stores/invoicing';
 import { ProfileEmptyState } from '../ProfileEmptyState';
+import { TabHeader } from './TabHeader';
 import { QUOTE_STATUS_CONFIG } from '../../../../types/invoicing';
 
 function formatCurrency(amount: number | null, currency = 'USD'): string {
@@ -30,7 +31,13 @@ const STATUS_COLORS: Record<string, string> = {
   purple: 'bg-purple-500/20 text-purple-400',
 };
 
-export default function QuotesTab({ entityType, entityId }: { entityType: string; entityId: string }) {
+interface QuotesTabProps {
+  entityType: string;
+  entityId: string;
+  onAddQuote?: () => void;
+}
+
+export default function QuotesTab({ entityType, entityId, onAddQuote }: QuotesTabProps) {
   const navigateToProfile = useCrmStore(s => s.navigateToProfile);
 
   const dealQuotes = useQuotesForDeal(entityType === 'deal' ? entityId : null);
@@ -42,11 +49,11 @@ export default function QuotesTab({ entityType, entityId }: { entityType: string
     entityType === 'contact' ? contactQuotes :
     companyQuotes;
 
-  if (!quotes.length) return <ProfileEmptyState message="No quotes yet" />;
+  if (!quotes.length) return <ProfileEmptyState message="No quotes yet" actionLabel="Create Quote" onAction={onAddQuote} />;
 
   return (
     <div>
-      <p className="text-xs text-zinc-500 mb-3">{quotes.length} quote{quotes.length !== 1 ? 's' : ''}</p>
+      <TabHeader count={quotes.length} noun="quote" actionLabel="Create Quote" onAction={onAddQuote} />
       <div className="space-y-2">
         {quotes.map(quote => {
           const statusCfg = QUOTE_STATUS_CONFIG[quote.status];

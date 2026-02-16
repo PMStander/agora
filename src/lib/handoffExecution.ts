@@ -8,6 +8,7 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { useAgentStore } from '../stores/agents';
 import { useMissionControlStore } from '../stores/missionControl';
+import { useProjectsStore } from '../stores/projects';
 import { createNotificationDirect } from '../hooks/useNotifications';
 import type { MissionPriority } from '../types/supabase';
 
@@ -148,6 +149,8 @@ export async function executeHandoffIntent(
   requestingAgentId: string,
   /** Callback to send a message to a target agent. Provided by useOpenClaw. */
   sendMessageFn?: (message: string, agentId: string) => Promise<void>,
+  /** Active project to auto-link handoff-created missions. */
+  projectId?: string | null,
 ): Promise<HandoffResult> {
   const agentStore = useAgentStore.getState();
   const missionStore = useMissionControlStore.getState();
@@ -272,6 +275,25 @@ export async function executeHandoffIntent(
             created_at: now,
             updated_at: now,
           });
+        }
+
+        // Auto-link mission to active project
+        if (missionId && projectId) {
+          const { error: linkErr } = await supabase
+            .from('project_missions')
+            .insert({ project_id: projectId, mission_id: missionId });
+          if (linkErr) {
+            console.error('[SmartHandoff] Failed to link mission to project:', linkErr);
+          } else {
+            // Update local store so UI reflects immediately
+            const projectsStore = useProjectsStore.getState();
+            const project = projectsStore.projects.find((p) => p.id === projectId);
+            if (project) {
+              projectsStore.updateProject(projectId, {
+                mission_ids: [...(project.mission_ids || []), missionId],
+              } as any);
+            }
+          }
         }
       }
     }

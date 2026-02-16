@@ -5,6 +5,7 @@ import { cn } from '../../lib/utils';
 import { uploadChatAttachment } from '../../lib/storage';
 import { useSlashCommandsStore } from '../../stores/slashCommands';
 import { ProjectContextSelector } from './ProjectContextSelector';
+import { ThinkingBlock } from './ThinkingBlock';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant' | 'system';
@@ -13,6 +14,7 @@ interface ChatMessageProps {
   agentName?: string;
   agentEmoji?: string;
   isContextMarker?: boolean;
+  isStreaming?: boolean;
 }
 
 function renderMessageContent(content: string) {
@@ -26,9 +28,9 @@ function renderMessageContent(content: string) {
     const matchText = match[0];
     if (matchStart > lastIndex) {
       nodes.push(
-        <div key={`text-${lastIndex}`} className="whitespace-pre-wrap">
+        <span key={`text-${lastIndex}`}>
           {content.slice(lastIndex, matchStart)}
-        </div>
+        </span>
       );
     }
 
@@ -40,7 +42,7 @@ function renderMessageContent(content: string) {
           key={`img-${matchStart}`}
           src={url}
           alt={alt}
-          className="max-w-full rounded-lg border border-border"
+          className="max-w-full rounded-lg border border-border block my-2"
         />
       );
     } else if (match[3] && match[4]) {
@@ -64,20 +66,20 @@ function renderMessageContent(content: string) {
 
   if (lastIndex < content.length) {
     nodes.push(
-      <div key={`text-${lastIndex}`} className="whitespace-pre-wrap">
+      <span key={`text-${lastIndex}`}>
         {content.slice(lastIndex)}
-      </div>
+      </span>
     );
   }
 
   if (nodes.length === 0) {
-    return <div className="whitespace-pre-wrap">{content}</div>;
+    return <span className="whitespace-pre-wrap">{content}</span>;
   }
 
-  return <div className="space-y-2">{nodes}</div>;
+  return <span className="whitespace-pre-wrap">{nodes}</span>;
 }
 
-function ChatMessage({ role, content, reasoning, agentName, agentEmoji, isContextMarker }: ChatMessageProps) {
+function ChatMessage({ role, content, reasoning, agentName, agentEmoji, isContextMarker, isStreaming }: ChatMessageProps) {
   const hasContent = !!content?.trim();
   
   // Render system messages (context markers) differently
@@ -126,14 +128,18 @@ function ChatMessage({ role, content, reasoning, agentName, agentEmoji, isContex
             : 'bg-muted text-foreground'
         )}
       >
-        {hasContent ? renderMessageContent(content) : reasoning ? null : <div className="whitespace-pre-wrap">...</div>}
+        {hasContent ? (
+          <>
+            {renderMessageContent(content)}
+            {isStreaming && (
+              <span
+                className="inline-block w-[2px] h-[1.1em] bg-primary ml-0.5 align-text-bottom animate-cursor-blink"
+              />
+            )}
+          </>
+        ) : reasoning ? null : <div className="whitespace-pre-wrap">...</div>}
         {role === 'assistant' && reasoning && reasoning.trim() && (
-          <details className="mt-2 rounded-lg border border-border bg-background/60 p-2">
-            <summary className="cursor-pointer text-xs text-muted-foreground">Thinking</summary>
-            <div className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
-              {reasoning}
-            </div>
-          </details>
+          <ThinkingBlock reasoning={reasoning} isStreaming={isStreaming} />
         )}
       </div>
     </div>
@@ -431,18 +437,23 @@ export function ChatPanel() {
           </div>
         ) : (
           <div className="py-4">
-            {messages.map((msg) => (
-              <ChatMessage
-                key={msg.id}
-                role={msg.role}
-                content={msg.content}
-                reasoning={msg.reasoning}
-                agentName={msg.role === 'assistant' ? activeAgent?.name : undefined}
-                agentEmoji={msg.role === 'assistant' ? activeAgent?.emoji : undefined}
-                isContextMarker={msg.isContextMarker}
-              />
-            ))}
-            {(isLoading || isUploading) && (messages.length === 0 || messages[messages.length - 1]?.role === 'user' || messages[messages.length - 1]?.content === '') && (
+            {messages.map((msg, index) => {
+              const isLastMessage = index === messages.length - 1;
+              const isStreamingMessage = isLastMessage && isLoading && msg.role === 'assistant' && !!msg.content;
+              return (
+                <ChatMessage
+                  key={msg.id}
+                  role={msg.role}
+                  content={msg.content}
+                  reasoning={msg.reasoning}
+                  agentName={msg.role === 'assistant' ? activeAgent?.name : undefined}
+                  agentEmoji={msg.role === 'assistant' ? activeAgent?.emoji : undefined}
+                  isContextMarker={msg.isContextMarker}
+                  isStreaming={isStreamingMessage}
+                />
+              );
+            })}
+            {(isLoading || isUploading) && (messages.length === 0 || messages[messages.length - 1]?.role === 'user' || !messages[messages.length - 1]?.content) && (
               <div className="flex gap-3 p-4">
                 <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
                   <span className="text-sm">{activeAgent?.emoji}</span>
@@ -537,7 +548,7 @@ export function ChatPanel() {
           </div>
         )}
 
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2">
           {/* File Input (Hidden) */}
           <input
             type="file"
@@ -546,19 +557,6 @@ export function ChatPanel() {
             className="hidden"
             multiple
           />
-          
-          {/* Attachment Button */}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isLoading || isUploading || !isConnected}
-            className="p-3 rounded-xl bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
-            title="Attach files"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-            </svg>
-          </button>
 
           <textarea
             ref={inputRef}
@@ -566,17 +564,32 @@ export function ChatPanel() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={`Message ${activeAgent?.name || 'agent'}...`}
-            className="flex-1 resize-none rounded-xl bg-muted px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full resize-none rounded-xl bg-muted px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             rows={1}
             disabled={isLoading || isUploading || !isConnected}
           />
-          <button
-            type="submit"
-            disabled={(!input.trim() && files.length === 0) || isLoading || isUploading || !isConnected}
-            className="px-4 py-2 rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
-          >
-            {isUploading ? '...' : 'Send'}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Attachment Button */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading || isUploading || !isConnected}
+              className="p-2 rounded-lg bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+              title="Attach files"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+            </button>
+            <div className="flex-1" />
+            <button
+              type="submit"
+              disabled={(!input.trim() && files.length === 0) || isLoading || isUploading || !isConnected}
+              className="px-4 py-2 rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
+            >
+              {isUploading ? '...' : 'Send'}
+            </button>
+          </div>
         </div>
         {!isConnected && (
           <div className="flex items-center gap-2 mt-2">

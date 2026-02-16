@@ -1,0 +1,20 @@
+{
+  "name": "cookbook",
+  "displayName": "Cookbook",
+  "description": "Recipe layouts with ingredients, method, photos, and nutritional info sections.",
+  "category": "non-fiction",
+  "tags": ["cookbook", "recipes", "food", "cooking"],
+  "defaults": {
+    "dimensions": { "width": 8, "height": 10, "unit": "in" },
+    "margins": { "top": 0.75, "bottom": 0.75, "inner": 1, "outer": 0.75 },
+    "bleed": 0.125
+  },
+  "themes": ["rustic-kitchen", "modern-minimalist", "warm-harvest"],
+  "defaultTheme": "rustic-kitchen",
+  "features": {
+    "pageFlip": true,
+    "pageNumbers": true,
+    "chapters": true,
+    "tableOfContents": true
+  }
+}

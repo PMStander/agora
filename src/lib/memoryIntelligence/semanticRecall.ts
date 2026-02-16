@@ -12,6 +12,50 @@ import { searchEntities } from '../embeddingSearch';
 import type { SemanticSearchResult, MemorySummary, AgentLearnedPattern } from '../../types/memoryIntelligence';
 import type { EmbeddableEntityType } from '../../types/entityEmbeddings';
 
+// ─── Entity Type Detection ───────────────────────────────────────────────────
+// Maps keywords in user messages to entity type filters so auto-injection
+// returns more focused results for specific queries.
+
+const ENTITY_TYPE_KEYWORDS: Array<{ pattern: RegExp; types: EmbeddableEntityType[] }> = [
+  { pattern: /\b(compan(?:y|ies)|firms?|org(?:anization)?s?)\b/i, types: ['company'] },
+  { pattern: /\b(contacts?|people|person|leads?)\b/i, types: ['contact'] },
+  { pattern: /\b(deals?|opportunit(?:y|ies)|pipeline)\b/i, types: ['deal'] },
+  { pattern: /\b(products?|items?|SKU|inventory)\b/i, types: ['product', 'product_category'] },
+  { pattern: /\b(quotes?|quotations?|proposals?)\b/i, types: ['quote'] },
+  { pattern: /\b(invoices?|billing|payments?)\b/i, types: ['invoice'] },
+  { pattern: /\b(projects?)\b/i, types: ['project'] },
+  { pattern: /\b(missions?|tasks?|assignments?)\b/i, types: ['mission', 'task'] },
+  { pattern: /\b(emails?|threads?)\b/i, types: ['email', 'email_template'] },
+  { pattern: /\b(events?|calendar|meetings?|schedule)\b/i, types: ['calendar_event'] },
+  { pattern: /\b(workflows?|automations?|sequences?)\b/i, types: ['workflow', 'workflow_sequence'] },
+  { pattern: /\b(docs?|documents?|files?|contracts?)\b/i, types: ['document', 'crm_document'] },
+  { pattern: /\b(orders?)\b/i, types: ['order'] },
+  { pattern: /\b(agents?|team\s*members?)\b/i, types: ['agent'] },
+  { pattern: /\b(boardroom|board\s*meeting|minutes|session)\b/i, types: ['boardroom_message'] },
+];
+
+/**
+ * Detect entity types mentioned in a user message.
+ * Returns undefined (search all) if no specific types detected or if too many
+ * different categories are mentioned (broad query).
+ */
+function detectEntityTypes(message: string): EmbeddableEntityType[] | undefined {
+  const matched = new Set<EmbeddableEntityType>();
+  let matchCount = 0;
+
+  for (const { pattern, types } of ENTITY_TYPE_KEYWORDS) {
+    if (pattern.test(message)) {
+      types.forEach((t) => matched.add(t));
+      matchCount++;
+    }
+  }
+
+  // No matches or 4+ categories → broad query, search everything
+  if (matched.size === 0 || matchCount >= 4) return undefined;
+
+  return Array.from(matched);
+}
+
 export interface RecalledContext {
   memories: SemanticSearchResult[];
   patterns: AgentLearnedPattern[];
@@ -212,6 +256,9 @@ export async function getPriorityContext(
  * Recall relevant entity data for an agent before sending a message.
  * Uses Gemini vector embeddings to find semantically related entities
  * (companies, contacts, deals, products, missions, etc.).
+ *
+ * Auto-detects entity types from the message to narrow results when the
+ * user explicitly mentions a category (e.g. "show me all deals").
  */
 export async function recallEntityContext(
   _agentId: string,
@@ -221,13 +268,16 @@ export async function recallEntityContext(
     entityTypes?: EmbeddableEntityType[];
   }
 ): Promise<string> {
-  const { maxResults = 5, entityTypes } = options || {};
+  const { maxResults = 15, entityTypes } = options || {};
 
   if (!isSupabaseConfigured() || !userMessage.trim()) return '';
 
+  // Auto-detect entity types from the message if none explicitly provided
+  const resolvedTypes = entityTypes ?? detectEntityTypes(userMessage);
+
   try {
     const results = await searchEntities(userMessage, {
-      entityTypes,
+      entityTypes: resolvedTypes,
       limit: maxResults,
       threshold: 0.3,
       hybrid: true,
@@ -236,6 +286,9 @@ export async function recallEntityContext(
     if (results.length === 0) return '';
 
     const lines = ['## Relevant Data'];
+    if (resolvedTypes) {
+      lines[0] += ` (filtered: ${resolvedTypes.join(', ')})`;
+    }
     results.forEach((r, i) => {
       const similarity = (r.similarity * 100).toFixed(0);
       // Show first 300 chars of content_text

@@ -9,6 +9,7 @@ interface CreateDealModalProps {
   isOpen: boolean;
   onClose: () => void;
   prefillContactId?: string;
+  prefillCompanyId?: string;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -17,6 +18,7 @@ export function CreateDealModal({
   isOpen,
   onClose,
   prefillContactId,
+  prefillCompanyId,
 }: CreateDealModalProps) {
   const { createDeal } = useCRM();
   const contacts = useCrmStore((s) => s.contacts);
@@ -55,6 +57,13 @@ export function CreateDealModal({
       setContactId(prefillContactId);
     }
   }, [prefillContactId]);
+
+  // Prefill company (only when no contact auto-populates it)
+  useEffect(() => {
+    if (prefillCompanyId && !contactId) {
+      setCompanyId(prefillCompanyId);
+    }
+  }, [prefillCompanyId, contactId]);
 
   // Auto-populate company from selected contact
   useEffect(() => {
@@ -98,7 +107,7 @@ export function CreateDealModal({
     setAmount('');
     setCurrency('USD');
     setContactId(prefillContactId || '');
-    setCompanyId('');
+    setCompanyId(prefillCompanyId || '');
     setAgentId('');
     setCloseDate('');
     setPriority('medium');

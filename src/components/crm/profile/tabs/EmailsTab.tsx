@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useCrmStore } from '../../../../stores/crm';
 import { useEmailsForContact, useEmailsForDeal, useEmailsForCompany } from '../../../../stores/email';
 import { ProfileEmptyState } from '../ProfileEmptyState';
+import { TabHeader } from './TabHeader';
 import { EMAIL_STATUS_CONFIG } from '../../../../types/email';
 
 function relativeTime(iso: string): string {
@@ -26,7 +27,13 @@ const STATUS_COLORS: Record<string, string> = {
   indigo: 'bg-indigo-500/20 text-indigo-400',
 };
 
-export default function EmailsTab({ entityType, entityId }: { entityType: string; entityId: string }) {
+interface EmailsTabProps {
+  entityType: string;
+  entityId: string;
+  onSendEmail?: () => void;
+}
+
+export default function EmailsTab({ entityType, entityId, onSendEmail }: EmailsTabProps) {
   const contacts = useCrmStore(s => s.contacts);
 
   const companyContactIds = useMemo(
@@ -46,11 +53,11 @@ export default function EmailsTab({ entityType, entityId }: { entityType: string
     entityType === 'deal' ? dealEmails :
     companyEmails;
 
-  if (!emails.length) return <ProfileEmptyState message="No emails yet" />;
+  if (!emails.length) return <ProfileEmptyState message="No emails yet" actionLabel="Send Email" onAction={onSendEmail} />;
 
   return (
     <div>
-      <p className="text-xs text-zinc-500 mb-3">{emails.length} email{emails.length !== 1 ? 's' : ''}</p>
+      <TabHeader count={emails.length} noun="email" actionLabel="Send Email" onAction={onSendEmail} />
       <div className="space-y-2">
         {emails.map(email => {
           const statusCfg = EMAIL_STATUS_CONFIG[email.status];

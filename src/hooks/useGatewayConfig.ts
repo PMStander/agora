@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, createElement } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, createElement } from 'react';
 import { openclawClient, type ConnectionStatus } from '../lib/openclawClient';
 import {
   AnthropicIcon,
@@ -210,6 +210,99 @@ export const SKILL_CATALOG: Record<string, Omit<SkillMeta, 'id'>> = {
   'company-bootstrap': { label: 'Company Bootstrap', icon: '🏢', category: 'System' },
 };
 
+// ── Skill category utilities ──────────────────────────────────────────
+
+export interface SkillInfo {
+  key: string;
+  label: string;
+  icon: string;
+  category: string;
+  description: string;
+}
+
+/**
+ * Extract the category directory from a gateway skill filePath.
+ * Handles nested paths like: `/skills/{category}/{skill-slug}/SKILL.md`
+ * For flat paths like `/skills/{skill-slug}/SKILL.md` (bundled skills),
+ * the category and skill would be the same segment — returns null so the
+ * caller falls back to the SKILL_CATALOG or 'other'.
+ */
+function parseCategoryFromPath(filePath: string, skillKey?: string): string | null {
+  if (!filePath) return null;
+  // Match /skills/{category}/{slug}/... — requires at least 2 segments after /skills/
+  const match = filePath.match(/\/skills\/([^/]+)\/([^/]+)/);
+  if (!match) return null;
+  const [, candidate, nextSegment] = match;
+  // If the candidate equals the skill key, this is a flat structure
+  // (e.g. /skills/discord/SKILL.md) — no real category
+  if (skillKey && candidate === skillKey) return null;
+  // If next segment looks like a file (SKILL.md), the candidate IS the skill, not a category
+  if (nextSegment.includes('.')) return null;
+  return candidate;
+}
+
+/**
+ * Prettify a category slug into a human-readable label.
+ * `developer-tools` → `Developer Tools`, `crm-contacts` → `CRM Contacts`
+ */
+export function prettifyCategory(slug: string): string {
+  return slug
+    .split('-')
+    .map((word) => {
+      const upper = word.toUpperCase();
+      // Known acronyms
+      if (['crm', 'csv', 'api', 'a2ui', 'gmail'].includes(word)) return upper;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
+}
+
+/**
+ * Build a map of enriched skill info from gateway status entries,
+ * falling back to the static SKILL_CATALOG for icon/label.
+ */
+function buildSkillInfoMap(
+  entries: SkillStatusEntry[],
+  catalog: Record<string, Omit<SkillMeta, 'id'>>,
+  allSkillKeys: string[],
+): Map<string, SkillInfo> {
+  const map = new Map<string, SkillInfo>();
+
+  // Process gateway entries first (they have filePath for category)
+  for (const entry of entries) {
+    const key = resolveSkillKey(entry);
+    if (!key) continue;
+
+    const pathCategory = parseCategoryFromPath(entry.filePath ?? '', key);
+    const catalogEntry = catalog[key];
+    const category = pathCategory ?? catalogEntry?.category?.toLowerCase().replace(/\s+/g, '-') ?? 'other';
+    const description = typeof entry.description === 'string' ? entry.description : '';
+
+    map.set(key, {
+      key,
+      label: catalogEntry?.label ?? key,
+      icon: catalogEntry?.icon ?? '⚡',
+      category,
+      description,
+    });
+  }
+
+  // Fill in any skills from allSkillKeys that weren't in gateway entries
+  for (const key of allSkillKeys) {
+    if (map.has(key)) continue;
+    const catalogEntry = catalog[key];
+    map.set(key, {
+      key,
+      label: catalogEntry?.label ?? key,
+      icon: catalogEntry?.icon ?? '⚡',
+      category: catalogEntry?.category?.toLowerCase().replace(/\s+/g, '-') ?? 'other',
+      description: '',
+    });
+  }
+
+  return map;
+}
+
 // ── Parse primary string into provider + model ───────────────────────
 
 export function parsePrimary(primary: string): { providerId: string; modelId: string } {
@@ -359,8 +452,8 @@ function deriveAgentScopedSkills(skills: SkillStatusEntry[], agentId?: string): 
       continue;
     }
 
-    // Main can use shared workspace skills (for example orchestrator/missions).
-    if ((!agentId || agentId === 'main') && source === 'openclaw-workspace' && filePath.includes('/workspace/skills/')) {
+    // Primary agent can use shared workspace skills (for example orchestrator/missions).
+    if ((!agentId || agentId === 'alexander') && source === 'openclaw-workspace' && filePath.includes('/workspace/skills/')) {
       keys.add(skillKey);
     }
   }
@@ -471,13 +564,6 @@ export function useGatewayConfig(options: UseGatewayConfigOptions = {}) {
           // If we have a config but no hash, log a warning
           if (cfg && !hash) {
             console.warn('[useGatewayConfig] Config loaded but no hash found. Patch operations may fail.');
-            console.log('[useGatewayConfig] Full result for debugging:', JSON.stringify(result, null, 2).slice(0, 2000));
-          }
-
-          // Log full config for debugging patch issues
-          if (cfg) {
-            console.log('[useGatewayConfig] Full loaded config keys:', Object.keys(cfg));
-            console.log('[useGatewayConfig] Full loaded config (first 1500 chars):', JSON.stringify(cfg, null, 2).slice(0, 1500));
           }
         }
       } catch (configErr) {
@@ -489,8 +575,6 @@ export function useGatewayConfig(options: UseGatewayConfigOptions = {}) {
         console.log('[useGatewayConfig] Falling back to status for model info');
         try {
           const statusResult = await openclawClient.send('status', {}) as Record<string, unknown> | undefined;
-          console.log('[useGatewayConfig] status result keys:', statusResult ? Object.keys(statusResult) : 'empty');
-          console.log('[useGatewayConfig] status result:', JSON.stringify(statusResult).slice(0, 1000));
 
           // Extract model from status response
           const model = (statusResult as Record<string, unknown>)?.model as string
@@ -513,8 +597,7 @@ export function useGatewayConfig(options: UseGatewayConfigOptions = {}) {
       // Strategy 3: Try health endpoint
       if (!cfg || !cfg.agents?.defaults?.model?.primary) {
         try {
-          const healthResult = await openclawClient.send('health', {}) as Record<string, unknown> | undefined;
-          console.log('[useGatewayConfig] health result:', JSON.stringify(healthResult).slice(0, 500));
+          await openclawClient.send('health', {}) as Record<string, unknown> | undefined;
         } catch (e) {
           console.warn('[useGatewayConfig] health failed:', e);
         }
@@ -544,12 +627,14 @@ export function useGatewayConfig(options: UseGatewayConfigOptions = {}) {
 
   const fetchSkillsStatus = useCallback(async () => {
     try {
-      const params = agentId ? { agentId } : {};
+      // Resolve UI agent ids to gateway agent ids — agents like 'main' (Marcus Aurelius)
+      // don't exist in the gateway's agents.list; route them through 'alexander'.
+      const GATEWAY_AGENTS = new Set(['main', 'alexander', 'cleopatra', 'homer', 'hermes']);
+      const resolvedAgentId = agentId && !GATEWAY_AGENTS.has(agentId) ? 'alexander' : agentId;
+      const params = resolvedAgentId ? { agentId: resolvedAgentId } : {};
       const result = await openclawClient.send('skills.status', params) as SkillsStatusResponse | undefined;
-      console.log('[useGatewayConfig] skills.status result:', result ? 'ok' : 'empty');
       if (result?.skills && Array.isArray(result.skills)) {
         setSkillsFromGateway(result.skills);
-        console.log('[useGatewayConfig] Skills loaded:', result.skills.length, 'skills');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : JSON.stringify(err);
@@ -626,9 +711,6 @@ export function useGatewayConfig(options: UseGatewayConfigOptions = {}) {
 
       // Gateway config.patch expects { raw: string, baseHash: string }
       const raw = JSON.stringify(fullConfig, null, 2);
-      console.log('[useGatewayConfig] Sending config.patch with hash:', currentHash?.slice(0, 16) + '...');
-      console.log('[useGatewayConfig] Full config patch payload (first 1000 chars):', raw.slice(0, 1000));
-      console.log('[useGatewayConfig] Current config keys:', Object.keys(config || {}));
       await openclawClient.send('config.patch', { raw, baseHash: currentHash });
       // Re-fetch to get updated config and new hash
       await fetchConfig();
@@ -645,10 +727,8 @@ export function useGatewayConfig(options: UseGatewayConfigOptions = {}) {
 
 
   const setModel = useCallback(async (primary: string, targetAgentId?: string) => {
-    console.log('[useGatewayConfig] setModel called with:', { primary, targetAgentId, agentId });
     const resolvedAgentId = targetAgentId ?? agentId;
     const currentList = config?.agents?.list;
-    console.log('[useGatewayConfig] resolvedAgentId:', resolvedAgentId, 'currentList length:', currentList?.length);
 
     // Prefer per-agent model updates when an agent is selected.
     if (resolvedAgentId && Array.isArray(currentList) && currentList.length > 0) {
@@ -665,7 +745,6 @@ export function useGatewayConfig(options: UseGatewayConfigOptions = {}) {
         return entry;
       });
 
-      console.log('[useGatewayConfig] Sending patch with updated list:', JSON.stringify(updatedList, null, 2).slice(0, 1000));
       await patchConfig({
         agents: { list: updatedList },
       });
@@ -711,9 +790,6 @@ export function useGatewayConfig(options: UseGatewayConfigOptions = {}) {
 
   // Build catalog with dynamic Ollama models merged in
   const catalog = MODEL_CATALOG.map(p => {
-    // Debug catalog
-    if (p.id === 'zai') console.log('[useGatewayConfig] Zai provider present in catalog with models:', p.models);
-
     if (p.id === 'ollama' && ollamaModels.length > 0) {
       return { ...p, models: ollamaModels };
     }
@@ -758,6 +834,10 @@ export function useGatewayConfig(options: UseGatewayConfigOptions = {}) {
     .filter((s) => s.eligible !== false)
     .map((s) => resolveSkillKey(s))
     .filter(Boolean);
+  // All gateway skill keys — no eligibility filter — for the browse catalog
+  const allGatewaySkillKeys = skillsFromGateway
+    .map((s) => resolveSkillKey(s))
+    .filter(Boolean);
   const allSkills = Array.from(new Set([
     ...skillEntries,
     ...(availableSkills ?? []),
@@ -765,6 +845,14 @@ export function useGatewayConfig(options: UseGatewayConfigOptions = {}) {
     ...configuredSkills,
     ...Object.keys(SKILL_CATALOG),
   ])).sort();
+
+  // Build enriched skill info map from gateway data + static catalog
+  const skillInfoMap = useMemo(
+    () => buildSkillInfoMap(skillsFromGateway, SKILL_CATALOG, allSkills),
+    [skillsFromGateway, allSkills],
+  );
+  // O(1) lookup set for eligible skill status in the browse catalog
+  const eligibleSkillSet = useMemo(() => new Set(allSkills), [allSkills]);
 
   return {
     config,
@@ -782,6 +870,9 @@ export function useGatewayConfig(options: UseGatewayConfigOptions = {}) {
     skillEntries,
     availableSkills: availableSkills ?? [],
     allSkills,
+    allGatewaySkillKeys,
+    eligibleSkillSet,
+    skillInfoMap,
     skillsFromGateway,
     supportedModelIds,
     modelsFetched,

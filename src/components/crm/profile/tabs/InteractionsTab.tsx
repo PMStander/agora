@@ -1,5 +1,6 @@
 import { useInteractionsForEntity } from '../../../../stores/crm';
 import { ProfileEmptyState } from '../ProfileEmptyState';
+import { TabHeader } from './TabHeader';
 import { INTERACTION_TYPE_CONFIG } from '../../../../types/crm';
 import type { InteractionType } from '../../../../types/crm';
 
@@ -15,17 +16,23 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-export default function InteractionsTab({ entityType, entityId }: { entityType: string; entityId: string }) {
+interface InteractionsTabProps {
+  entityType: string;
+  entityId: string;
+  onLogInteraction?: () => void;
+}
+
+export default function InteractionsTab({ entityType, entityId, onLogInteraction }: InteractionsTabProps) {
   const interactions = useInteractionsForEntity(
     entityType as 'contact' | 'company' | 'deal',
     entityId,
   );
 
-  if (!interactions.length) return <ProfileEmptyState message="No interactions yet" />;
+  if (!interactions.length) return <ProfileEmptyState message="No interactions yet" actionLabel="Log Interaction" onAction={onLogInteraction} />;
 
   return (
     <div>
-      <p className="text-xs text-zinc-500 mb-3">{interactions.length} interaction{interactions.length !== 1 ? 's' : ''}</p>
+      <TabHeader count={interactions.length} noun="interaction" actionLabel="Log Interaction" onAction={onLogInteraction} />
       <div className="space-y-2">
         {interactions.map(interaction => {
           const typeCfg = INTERACTION_TYPE_CONFIG[interaction.interaction_type as InteractionType];

@@ -4,6 +4,11 @@ import { useBoardroomStore, useSessionMessages } from '../../stores/boardroom';
 import { getSessionPreset, type BoardroomSession, type BoardroomSessionMetadata } from '../../types/boardroom';
 import { PrepFindingCard } from './PrepFindingCard';
 import { PrepProgressBar } from './PrepProgressBar';
+import { BoardroomSessionDetail } from './BoardroomSessionDetail';
+import { BoardroomUserInput } from './BoardroomUserInput';
+import { BoardroomSessionSummary } from './BoardroomSessionSummary';
+import { BoardroomExtensionDialog } from './BoardroomExtensionDialog';
+import { getUserDisplayInfo } from '../../lib/boardroomUserParticipation';
 
 interface BoardroomConversationProps {
   session: BoardroomSession;
@@ -39,30 +44,64 @@ export function BoardroomConversation({ session, onEndSession }: BoardroomConver
     }
   }, [messages.length, streamingContent]);
 
-  const participantEmojis = session.participant_agent_ids
-    .map((id) => agentProfiles[id]?.emoji || '?');
+  const [showDetail, setShowDetail] = useState(true);
+  const [showExtension, setShowExtension] = useState(false);
+  const extensionShownRef = useRef(false);
+
+  // Reset extension dialog tracking when session changes
+  useEffect(() => {
+    extensionShownRef.current = false;
+    setShowExtension(false);
+  }, [session.id]);
+
+  // Show extension dialog when entering wrap-up with few turns remaining
+  useEffect(() => {
+    if (!isActiveSession || extensionShownRef.current) return;
+    const phase = metadata?.current_phase;
+    const remaining = session.max_turns - session.turn_count;
+    if (phase === 'wrap-up' && remaining <= 5 && remaining > 0) {
+      setShowExtension(true);
+      extensionShownRef.current = true;
+    }
+  }, [isActiveSession, metadata?.current_phase, session.max_turns, session.turn_count]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full">
+      {/* Session detail panel (left) */}
+      {showDetail && (
+        <div className="w-80 border-r border-zinc-800 bg-zinc-900/30">
+          <BoardroomSessionDetail session={session} />
+        </div>
+      )}
+
+      {/* Conversation view (right) */}
+      <div className="flex-1 flex flex-col min-w-0">
       {/* Session header */}
-      <div className="px-4 py-3 border-b border-zinc-800">
+      <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
         <div className="flex items-start justify-between">
-          <div>
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowDetail(!showDetail)}
+                className="text-xs text-zinc-500 hover:text-amber-400 transition-colors"
+                title={showDetail ? 'Hide details' : 'Show details'}
+              >
+                {showDetail ? '◀' : '▶'}
+              </button>
               <span className="text-base">{preset.icon}</span>
-              <h3 className="text-sm font-semibold text-zinc-100">{session.title}</h3>
+              <h3 className="text-sm font-semibold text-zinc-100 truncate">{session.title}</h3>
               {isActiveSession && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-400 animate-pulse">
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-400 animate-pulse shrink-0">
                   ● LIVE
                 </span>
               )}
             </div>
             {session.topic && (
-              <p className="text-xs text-zinc-500 mt-0.5 line-clamp-1">{session.topic}</p>
+              <p className="text-xs text-zinc-500 mt-0.5 line-clamp-1 ml-8">{session.topic}</p>
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0 ml-2">
             <span className="text-[10px] text-zinc-500">
               Turn {session.turn_count}/{session.max_turns}
             </span>
@@ -75,19 +114,6 @@ export function BoardroomConversation({ session, onEndSession }: BoardroomConver
               </button>
             )}
           </div>
-        </div>
-
-        {/* Participant avatars */}
-        <div className="flex items-center gap-1 mt-2">
-          {participantEmojis.map((emoji, i) => (
-            <span
-              key={i}
-              className="text-sm"
-              title={agentProfiles[session.participant_agent_ids[i]]?.name}
-            >
-              {emoji}
-            </span>
-          ))}
         </div>
       </div>
 
@@ -124,25 +150,44 @@ export function BoardroomConversation({ session, onEndSession }: BoardroomConver
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.length === 0 && !isActiveSession && (
           <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-zinc-600">
-              {session.status === 'closed'
-                ? 'This session has ended.'
-                : 'No messages yet. The conversation will begin...'}
-            </p>
+            {session.status === 'closed' ? (
+              metadata?.session_summary ? (
+                <BoardroomSessionSummary summary={metadata.session_summary} />
+              ) : (
+                <p className="text-sm text-zinc-600">This session has ended.</p>
+              )
+            ) : (
+              <p className="text-sm text-zinc-600">No messages yet. The conversation will begin...</p>
+            )}
           </div>
         )}
 
         {messages.map((msg) => {
-          const agent = agentProfiles[msg.agent_id];
+          const isUser = msg.sender_type === 'user';
+          const agent = isUser ? null : agentProfiles[msg.agent_id];
+          const userInfo = isUser ? getUserDisplayInfo() : null;
+          
           return (
-            <div key={msg.id} className="flex gap-3">
-              <span className="text-lg shrink-0 mt-0.5">{agent?.emoji || '?'}</span>
+            <div
+              key={msg.id}
+              className={`flex gap-3 ${isUser ? 'bg-blue-500/5 -mx-4 px-4 py-2 rounded-lg' : ''}`}
+            >
+              <span className="text-lg shrink-0 mt-0.5">
+                {isUser ? userInfo!.emoji : agent?.emoji || '?'}
+              </span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-xs font-medium text-zinc-300">{agent?.name || msg.agent_id}</span>
+                  <span className={`text-xs font-medium ${isUser ? 'text-blue-400' : 'text-zinc-300'}`}>
+                    {isUser ? userInfo!.name : agent?.name || msg.agent_id}
+                  </span>
+                  {isUser && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400">
+                      You
+                    </span>
+                  )}
                   <span className="text-[10px] text-zinc-600">Turn {msg.turn_number}</span>
                 </div>
-                <div className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
+                <div className={`text-sm whitespace-pre-wrap leading-relaxed ${isUser ? 'text-zinc-200' : 'text-zinc-300'}`}>
                   {msg.content}
                 </div>
                 {msg.reasoning && (
@@ -180,6 +225,19 @@ export function BoardroomConversation({ session, onEndSession }: BoardroomConver
           </div>
         )}
       </div>
+
+      {/* User Input */}
+      <BoardroomUserInput session={session} />
+      </div>
+
+      {/* Extension Dialog */}
+      {showExtension && (
+        <BoardroomExtensionDialog
+          session={session}
+          onClose={() => setShowExtension(false)}
+          onExtend={() => setShowExtension(false)}
+        />
+      )}
     </div>
   );
 }

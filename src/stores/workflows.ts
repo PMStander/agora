@@ -13,7 +13,7 @@ interface WorkflowsState {
   // UI State (persisted)
   selectedWorkflowId: string | null;
   selectedRunId: string | null;
-  activeSubTab: 'workflows' | 'sequences' | 'history';
+  activeSubTab: 'workflows' | 'cron' | 'sequences' | 'history';
   editorOpen: boolean;
   searchQuery: string;
 

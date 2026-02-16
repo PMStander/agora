@@ -4,9 +4,11 @@ import { useWorkflowTriggers } from '../../hooks/useWorkflowTriggers';
 import { WorkflowList } from './WorkflowList';
 import { WorkflowEditor } from './WorkflowEditor';
 import { WorkflowRunHistory } from './WorkflowRunHistory';
+import { CronJobsViewer } from './CronJobsViewer';
 
 const SUB_TABS = [
   { id: 'workflows', label: 'Workflows' },
+  { id: 'cron', label: 'Cron Jobs' },
   { id: 'sequences', label: 'Sequences' },
   { id: 'history', label: 'Run History' },
 ] as const;
@@ -44,15 +46,17 @@ export function WorkflowsTab() {
 
         <div className="flex-1" />
 
-        <button
-          onClick={() => {
-            useWorkflowsStore.getState().selectWorkflow(null);
-            setEditorOpen(true);
-          }}
-          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-amber-500 text-black hover:bg-amber-400 transition-colors"
-        >
-          + New Workflow
-        </button>
+        {activeSubTab !== 'cron' && (
+          <button
+            onClick={() => {
+              useWorkflowsStore.getState().selectWorkflow(null);
+              setEditorOpen(true);
+            }}
+            className="px-3 py-1.5 text-sm font-medium rounded-lg bg-amber-500 text-black hover:bg-amber-400 transition-colors"
+          >
+            + New Workflow
+          </button>
+        )}
       </div>
 
       {/* Content */}
@@ -62,6 +66,7 @@ export function WorkflowsTab() {
         ) : (
           <>
             {activeSubTab === 'workflows' && <WorkflowList />}
+            {activeSubTab === 'cron' && <CronJobsViewer />}
             {activeSubTab === 'sequences' && <SequencesPlaceholder />}
             {activeSubTab === 'history' && <WorkflowRunHistory />}
           </>

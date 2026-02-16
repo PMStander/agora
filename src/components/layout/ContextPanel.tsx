@@ -5,6 +5,7 @@ import { useAutoSurface } from '../../hooks/useAutoSurface';
 import { A2UIRenderer, type A2UIActionEvent } from '../a2ui/A2UIRenderer';
 import { cn } from '../../lib/utils';
 import { useOpenClaw } from '../../hooks/useOpenClaw';
+import { supabase } from '../../lib/supabase';
 import {
   useGatewayConfig,
   THINKING_LEVELS,
@@ -1006,6 +1007,56 @@ export function ContextPanel({ isOpen, onToggle }: ContextPanelProps) {
     setLastA2UIAction(`${event.action} @ ${event.surfaceId}`);
     setA2UIActionError(null);
 
+    // ── Handle artifact actions locally ──────────────────────────
+    if (event.action === 'download_artifact' || event.action === 'open_artifact') {
+      try {
+        const { documentId } = (event.payload ?? {}) as { documentId?: string };
+        if (!documentId) {
+          setA2UIActionError('No document ID provided');
+          return;
+        }
+
+        const { data: doc, error } = await supabase
+          .from('crm_documents')
+          .select('storage_path, file_name')
+          .eq('id', documentId)
+          .single();
+
+        if (error || !doc) {
+          setA2UIActionError(`Document not found: ${error?.message ?? 'unknown'}`);
+          return;
+        }
+
+        const { data: signedUrlData } = await supabase.storage
+          .from('crm-documents')
+          .createSignedUrl(doc.storage_path, 3600);
+
+        if (!signedUrlData?.signedUrl) {
+          setA2UIActionError('Failed to generate download URL');
+          return;
+        }
+
+        if (event.action === 'open_artifact') {
+          // Open in system viewer via Tauri shell
+          const { open } = await import('@tauri-apps/plugin-shell');
+          await open(signedUrlData.signedUrl);
+        } else {
+          // Trigger browser download
+          const link = document.createElement('a');
+          link.href = signedUrlData.signedUrl;
+          link.download = doc.file_name;
+          link.target = '_blank';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+      } catch (err) {
+        setA2UIActionError(String(err));
+      }
+      return;
+    }
+
+    // ── Default: send action to agent ────────────────────────────
     if (!activeAgent || !gatewayConnected) return;
 
     const actionInstruction = [

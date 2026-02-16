@@ -8,6 +8,8 @@ const AgentWsSkills = lazy(() => import('./AgentWsSkills'));
 const AgentWsFiles = lazy(() => import('./AgentWsFiles'));
 const AgentWsProjects = lazy(() => import('./AgentWsProjects'));
 const AgentWsPerformance = lazy(() => import('./AgentWsPerformance'));
+const AgentWsGrowth = lazy(() => import('./AgentWsGrowth'));
+const LazyDroidPanel = lazy(() => import('../../droid/DroidPanel').then(m => ({ default: m.DroidPanel })));
 
 const WORKSPACE_TABS: Array<{ id: AgentWorkspaceTab; label: string; icon: string }> = [
   { id: 'overview', label: 'Overview', icon: '📋' },
@@ -16,6 +18,8 @@ const WORKSPACE_TABS: Array<{ id: AgentWorkspaceTab; label: string; icon: string
   { id: 'files', label: 'Files & Sessions', icon: '📁' },
   { id: 'projects', label: 'Projects', icon: '📂' },
   { id: 'performance', label: 'Performance', icon: '📊' },
+  { id: 'growth', label: 'Growth', icon: '🌱' },
+  { id: 'droid', label: 'Droid', icon: '🤖' },
 ];
 
 const LIFECYCLE_COLORS: Record<string, string> = {
@@ -97,16 +101,23 @@ export function AgentWorkspace() {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto p-5">
+      {workspaceTab === 'droid' ? (
         <Suspense fallback={<TabLoadingFallback />}>
-          {workspaceTab === 'overview' && <AgentWsOverview agent={agent} />}
-          {workspaceTab === 'identity' && <AgentWsIdentity agent={agent} />}
-          {workspaceTab === 'skills' && <AgentWsSkills agent={agent} />}
-          {workspaceTab === 'files' && <AgentWsFiles agent={agent} />}
-          {workspaceTab === 'projects' && <AgentWsProjects agent={agent} />}
-          {workspaceTab === 'performance' && <AgentWsPerformance agent={agent} />}
+          <LazyDroidPanel className="flex-1 min-h-0" />
         </Suspense>
-      </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto p-5">
+          <Suspense fallback={<TabLoadingFallback />}>
+            {workspaceTab === 'overview' && <AgentWsOverview agent={agent} />}
+            {workspaceTab === 'identity' && <AgentWsIdentity agent={agent} />}
+            {workspaceTab === 'skills' && <AgentWsSkills agent={agent} />}
+            {workspaceTab === 'files' && <AgentWsFiles agent={agent} />}
+            {workspaceTab === 'projects' && <AgentWsProjects agent={agent} />}
+            {workspaceTab === 'performance' && <AgentWsPerformance agent={agent} />}
+            {workspaceTab === 'growth' && <AgentWsGrowth agent={agent} />}
+          </Suspense>
+        </div>
+      )}
     </div>
   );
 }

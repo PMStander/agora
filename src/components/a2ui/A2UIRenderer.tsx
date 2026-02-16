@@ -800,6 +800,133 @@ const ComponentCatalog: Record<string, React.FC<ComponentProps>> = {
     );
   },
 
+  // ─── Artifact A2UI Components ────────────────────────────────────────────
+
+  ArtifactCard: ({ component, surface, onAction }: ComponentProps) => {
+    const p = component.props ?? {};
+    const title = String(resolveBinding(p.title, surface.dataModel) ?? 'Untitled');
+    const fileName = String(resolveBinding(p.fileName, surface.dataModel) ?? '');
+    const fileSize = toNumber(resolveBinding(p.fileSize, surface.dataModel), 0);
+    const mimeType = String(resolveBinding(p.mimeType, surface.dataModel) ?? '');
+    const documentId = String(resolveBinding(p.documentId, surface.dataModel) ?? '');
+    const tags = toArray(resolveBinding(p.tags, surface.dataModel)).map(String);
+
+    const isPdf = mimeType.includes('pdf');
+    const isVideo = mimeType.startsWith('video/');
+    const icon = isPdf ? '\uD83D\uDCC4' : isVideo ? '\uD83C\uDFAC' : '\uD83D\uDCCE';
+    const typeLabel = isPdf ? 'PDF' : isVideo ? 'Video' : 'File';
+
+    const sizeLabel = fileSize > 0
+      ? fileSize > 1024 * 1024
+        ? `${(fileSize / 1024 / 1024).toFixed(1)} MB`
+        : `${(fileSize / 1024).toFixed(0)} KB`
+      : '';
+
+    return (
+      <div className="rounded-lg border border-zinc-700 bg-zinc-900/60 p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">{icon}</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-zinc-100 truncate">{title}</div>
+            <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+              <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{typeLabel}</span>
+              {fileName && <span className="truncate">{fileName}</span>}
+              {sizeLabel && <span>{sizeLabel}</span>}
+            </div>
+          </div>
+        </div>
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {tags.map((tag, i) => (
+              <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{tag}</span>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <button
+            className="flex-1 text-xs px-2 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
+            onClick={() => emitAction(onAction, surface, component, 'download_artifact', { documentId, fileName })}
+          >
+            Download
+          </button>
+          {isPdf && (
+            <button
+              className="flex-1 text-xs px-2 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
+              onClick={() => emitAction(onAction, surface, component, 'open_artifact', { documentId })}
+            >
+              Open
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  },
+
+  PdfViewer: ({ component, surface, onAction }: ComponentProps) => {
+    const p = component.props ?? {};
+    const title = String(resolveBinding(p.title, surface.dataModel) ?? 'PDF Document');
+    const documentId = String(resolveBinding(p.documentId, surface.dataModel) ?? '');
+
+    return (
+      <div className="rounded-lg border border-zinc-700 bg-zinc-900/60 p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">{'\uD83D\uDCC4'}</span>
+          <div>
+            <div className="text-sm font-medium text-zinc-100">{title}</div>
+            <div className="text-[10px] text-zinc-500">PDF Document</div>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button
+            className="flex-1 text-xs px-3 py-2 rounded bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-600/30 transition-colors"
+            onClick={() => emitAction(onAction, surface, component, 'open_artifact', { documentId })}
+          >
+            Open PDF
+          </button>
+          <button
+            className="text-xs px-3 py-2 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
+            onClick={() => emitAction(onAction, surface, component, 'download_artifact', { documentId })}
+          >
+            Download
+          </button>
+        </div>
+      </div>
+    );
+  },
+
+  VideoPlayer: ({ component, surface }: ComponentProps) => {
+    const p = component.props ?? {};
+    const title = String(resolveBinding(p.title, surface.dataModel) ?? 'Video');
+    const signedUrl = String(resolveBinding(p.signedUrl, surface.dataModel) ?? '');
+    const poster = resolveBinding(p.poster, surface.dataModel) as string | undefined;
+
+    if (!signedUrl) {
+      return (
+        <div className="rounded-lg border border-zinc-700 bg-zinc-900/60 p-4 text-center">
+          <span className="text-2xl">{'\uD83C\uDFAC'}</span>
+          <div className="text-sm text-zinc-400 mt-1">{title}</div>
+          <div className="text-[10px] text-zinc-600 mt-1">Video URL not available</div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-lg border border-zinc-700 bg-zinc-900/60 p-2 space-y-1">
+        {title && <div className="text-xs font-medium text-zinc-300 px-1">{title}</div>}
+        <video
+          controls
+          preload="metadata"
+          poster={poster}
+          className="w-full rounded"
+          style={{ maxHeight: 360 }}
+        >
+          <source src={signedUrl} />
+          Your browser does not support video playback.
+        </video>
+      </div>
+    );
+  },
+
   // ─── Project A2UI Components ──────────────────────────────────────────────
 
   ProjectProgress: ({ component, surface }: ComponentProps) => {

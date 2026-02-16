@@ -1,0 +1,20 @@
+{
+  "name": "novel",
+  "displayName": "Novel",
+  "description": "Classic text-heavy layout with running headers, drop caps, and chapter openers.",
+  "category": "fiction",
+  "tags": ["novel", "fiction", "text", "literary", "chapter-book"],
+  "defaults": {
+    "dimensions": { "width": 6, "height": 9, "unit": "in" },
+    "margins": { "top": 0.75, "bottom": 0.75, "inner": 1, "outer": 0.75 },
+    "bleed": 0
+  },
+  "themes": ["classic-literary", "dark-academia", "elegant-serif"],
+  "defaultTheme": "classic-literary",
+  "features": {
+    "pageFlip": true,
+    "pageNumbers": true,
+    "chapters": true,
+    "tableOfContents": true
+  }
+}

@@ -84,7 +84,7 @@ export function useEmail() {
 
   const connectGmail = useCallback(() => {
     if (!isGmailConfigured()) {
-      console.error('[Email] Gmail not configured. Set VITE_GMAIL_CLIENT_ID and VITE_GMAIL_CLIENT_SECRET.');
+      console.error('[Email] Gmail not configured. Set VITE_GMAIL_CLIENT_ID and VITE_GOOGLE_OAUTH_CLIENT_SECRET.');
       return;
     }
     initiateGmailAuth();

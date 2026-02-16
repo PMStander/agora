@@ -1,5 +1,6 @@
 import { useCrmStore, useContactsByCompany } from '../../../../stores/crm';
 import { ProfileEmptyState } from '../ProfileEmptyState';
+import { TabHeader } from './TabHeader';
 import { LIFECYCLE_STATUS_CONFIG, LEAD_SCORE_CONFIG } from '../../../../types/crm';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -13,16 +14,22 @@ const STATUS_COLORS: Record<string, string> = {
   red: 'bg-red-500/20 text-red-400',
 };
 
-export default function ContactsTab({ entityType, entityId }: { entityType: string; entityId: string }) {
+interface ContactsTabProps {
+  entityType: string;
+  entityId: string;
+  onAddContact?: () => void;
+}
+
+export default function ContactsTab({ entityType, entityId, onAddContact }: ContactsTabProps) {
   void entityType; // only used for company
   const navigateToProfile = useCrmStore(s => s.navigateToProfile);
   const contacts = useContactsByCompany(entityId);
 
-  if (!contacts.length) return <ProfileEmptyState message="No contacts yet" />;
+  if (!contacts.length) return <ProfileEmptyState message="No contacts yet" actionLabel="Add Contact" onAction={onAddContact} />;
 
   return (
     <div>
-      <p className="text-xs text-zinc-500 mb-3">{contacts.length} contact{contacts.length !== 1 ? 's' : ''}</p>
+      <TabHeader count={contacts.length} noun="contact" actionLabel="Add Contact" onAction={onAddContact} />
       <div className="space-y-2">
         {contacts.map(contact => {
           const fullName = `${contact.first_name} ${contact.last_name}`.trim();

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useCrmStore } from '../../../../stores/crm';
 import { useEventsForContact, useEventsForDeal, useEventsForCompany } from '../../../../stores/calendar';
 import { ProfileEmptyState } from '../ProfileEmptyState';
+import { TabHeader } from './TabHeader';
 import { EVENT_TYPE_CONFIG } from '../../../../types/calendar';
 
 const TYPE_COLORS: Record<string, string> = {
@@ -21,7 +22,13 @@ function formatDateTime(iso: string): string {
     d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function EventsTab({ entityType, entityId }: { entityType: string; entityId: string }) {
+interface EventsTabProps {
+  entityType: string;
+  entityId: string;
+  onScheduleEvent?: () => void;
+}
+
+export default function EventsTab({ entityType, entityId, onScheduleEvent }: EventsTabProps) {
   const contacts = useCrmStore(s => s.contacts);
 
   const companyContactIds = useMemo(
@@ -41,11 +48,11 @@ export default function EventsTab({ entityType, entityId }: { entityType: string
     entityType === 'deal' ? dealEvents :
     companyEvents;
 
-  if (!events.length) return <ProfileEmptyState message="No events yet" />;
+  if (!events.length) return <ProfileEmptyState message="No events yet" actionLabel="Schedule Event" onAction={onScheduleEvent} />;
 
   return (
     <div>
-      <p className="text-xs text-zinc-500 mb-3">{events.length} event{events.length !== 1 ? 's' : ''}</p>
+      <TabHeader count={events.length} noun="event" actionLabel="Schedule Event" onAction={onScheduleEvent} />
       <div className="space-y-2">
         {events.map(event => {
           const typeCfg = EVENT_TYPE_CONFIG[event.event_type];

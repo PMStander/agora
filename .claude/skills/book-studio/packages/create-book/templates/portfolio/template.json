@@ -1,0 +1,20 @@
+{
+  "name": "portfolio",
+  "displayName": "Portfolio / Lookbook",
+  "description": "Professional portfolio with project spreads, image galleries, and case study layouts.",
+  "category": "creative",
+  "tags": ["portfolio", "design", "photography", "lookbook", "professional"],
+  "defaults": {
+    "dimensions": { "width": 8.5, "height": 11, "unit": "in" },
+    "margins": { "top": 0.75, "bottom": 0.75, "inner": 1, "outer": 0.75 },
+    "bleed": 0.125
+  },
+  "themes": ["modern-sans", "modern-minimalist", "elegant-serif"],
+  "defaultTheme": "modern-sans",
+  "features": {
+    "pageFlip": true,
+    "pageNumbers": true,
+    "chapters": true,
+    "tableOfContents": true
+  }
+}

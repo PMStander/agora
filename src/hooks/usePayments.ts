@@ -264,6 +264,16 @@ export function usePayments() {
 
           // Auto-sync: create a financial_transaction for this income
           if (payment) {
+            // Route to PayPal-type account first, then default business account
+            const { useFinancialStore } = await import('../stores/financial');
+            const bankAccounts = useFinancialStore.getState().bankAccounts;
+            const paypalAccount = bankAccounts.find(
+              (a) => a.is_active && a.account_type === 'paypal'
+            );
+            const defaultBizAccount = bankAccounts.find(
+              (a) => a.is_active && a.is_default && (a.context === 'business' || a.context === 'both')
+            );
+
             const { error: ftError } = await supabase
               .from('financial_transactions')
               .insert({
@@ -273,6 +283,8 @@ export function usePayments() {
                 currency: paymentLink.currency || 'USD',
                 invoice_payment_id: (payment as any).id,
                 invoice_id: paymentLink.invoice_id,
+                bank_account_id: paypalAccount?.id || defaultBizAccount?.id || null,
+                context: 'business',
                 description: `PayPal payment for Invoice${invoice ? ` ${invoice.invoice_number}` : ''}`,
                 reference_number: paymentLink.external_id,
                 transaction_date: new Date().toISOString(),

@@ -8,3 +8,6 @@ export { BoardroomConversation } from './BoardroomConversation';
 export { CreateSessionModal } from './CreateSessionModal';
 export { BoardroomPresetPicker } from './BoardroomPresetPicker';
 export { SessionCard } from './SessionCard';
+export { BoardroomChatView } from './BoardroomChatView';
+export { GrowthLog } from './GrowthLog';
+export { ResolutionInbox, usePendingResolutionCount } from './ResolutionInbox';

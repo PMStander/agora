@@ -410,3 +410,17 @@ export const useSelectedRecurringItem = () => {
   const selectedId = useFinancialStore((s) => s.selectedRecurringItemId);
   return items.find((i) => i.id === selectedId) || null;
 };
+
+// Get default account for a specific context (business or personal)
+export const useDefaultAccountForContext = (context: FinancialContext) => {
+  const accounts = useFinancialStore((s) => s.bankAccounts);
+  return accounts.find(
+    (a) => a.is_active && a.is_default && (a.context === context || a.context === 'both')
+  ) || null;
+};
+
+// Get all active bank accounts regardless of context filter (for use in forms)
+export const useAllActiveBankAccounts = () => {
+  const accounts = useFinancialStore((s) => s.bankAccounts);
+  return accounts.filter((a) => a.is_active);
+};

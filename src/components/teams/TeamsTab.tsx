@@ -1,11 +1,14 @@
-import { useCallback } from 'react';
+import { lazy, Suspense, useCallback } from 'react';
 import { useBoardroomStore } from '../../stores/boardroom';
 import { MeetTheTeam } from './MeetTheTeam';
 import { BoardroomView } from './BoardroomView';
 import { useBoardroom } from '../../hooks/useBoardroom';
 import { useBoardroomOrchestrator } from '../../hooks/useBoardroomOrchestrator';
 import { useBoardroomPrep } from '../../hooks/useBoardroomPrep';
+import { useBoardroomAutoStart } from '../../hooks/useBoardroomAutoStart';
 import type { BoardroomSessionMetadata } from '../../types/boardroom';
+
+const GrowthLog = lazy(() => import('./GrowthLog').then((m) => ({ default: m.GrowthLog })));
 
 export function TeamsTab() {
   const activeView = useBoardroomStore((s) => s.activeView);
@@ -13,6 +16,9 @@ export function TeamsTab() {
   const { createSession, startSession, endSession, fetchMessages } = useBoardroom();
   const { runSession, stopSession } = useBoardroomOrchestrator();
   const { startPreparation } = useBoardroomPrep();
+  
+  // Enable auto-start for scheduled sessions
+  useBoardroomAutoStart(runSession);
 
   const handleCreateSession = useCallback(
     async (data: Parameters<typeof createSession>[0] & { metadata: BoardroomSessionMetadata }) => {
@@ -70,19 +76,35 @@ export function TeamsTab() {
         >
           Agora Boardroom
         </button>
+        <button
+          onClick={() => setActiveView('growth-log')}
+          className={`
+            px-3 py-1.5 text-xs font-medium rounded-lg transition-colors
+            ${activeView === 'growth-log'
+              ? 'bg-amber-500/20 text-amber-400'
+              : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+            }
+          `}
+        >
+          Growth Log
+        </button>
       </div>
 
       {/* View content */}
       <div className="flex-1 overflow-hidden">
         {activeView === 'meet-the-team' ? (
           <MeetTheTeam />
-        ) : (
+        ) : activeView === 'boardroom' ? (
           <BoardroomView
             onCreateSession={handleCreateSession}
             onStartSession={handleStartSession}
             onEndSession={handleEndSession}
             onFetchMessages={fetchMessages}
           />
+        ) : (
+          <Suspense fallback={<div className="flex items-center justify-center h-64 text-zinc-500">Loading...</div>}>
+            <GrowthLog />
+          </Suspense>
         )}
       </div>
     </div>

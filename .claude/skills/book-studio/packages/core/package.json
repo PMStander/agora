@@ -1,0 +1,44 @@
+{
+  "name": "@bookmotion/core",
+  "version": "0.1.0",
+  "description": "Core components and utilities for Bookmotion",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "dependencies": {
+    "puppeteer": "^21.0.0",
+    "pdf-lib": "^1.17.0",
+    "playwright": "^1.40.0",
+    "react-pageflip": "^2.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "book",
+    "publishing",
+    "pdf",
+    "react",
+    "layout"
+  ]
+}

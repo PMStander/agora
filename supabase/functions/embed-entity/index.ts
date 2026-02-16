@@ -46,7 +46,7 @@ serve(async (req) => {
           entity_type,
           entity_id,
           embedding: vectorString,
-          content: text,
+          content_text: text,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'entity_type,entity_id' }

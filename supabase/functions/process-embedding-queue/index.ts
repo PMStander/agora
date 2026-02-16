@@ -20,7 +20,7 @@ serve(async (req) => {
 
     // Lock a batch of pending items via RPC
     const { data: batch, error: lockError } = await supabase.rpc('lock_embedding_batch', {
-      batch_size: batchSize,
+      p_batch_size: batchSize,
     });
 
     if (lockError) {
@@ -57,7 +57,7 @@ serve(async (req) => {
               entity_type: item.entity_type,
               entity_id: item.entity_id,
               embedding: vectorString,
-              content: text,
+              content_text: text,
               updated_at: new Date().toISOString(),
             },
             { onConflict: 'entity_type,entity_id' }

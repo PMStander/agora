@@ -1,0 +1,20 @@
+{
+  "name": "puzzle-book",
+  "displayName": "Puzzle Book",
+  "description": "Centered puzzle grids with instructions and difficulty indicators. Supports crosswords, sudoku, word searches.",
+  "category": "creative",
+  "tags": ["puzzle", "crossword", "sudoku", "word-search", "games"],
+  "defaults": {
+    "dimensions": { "width": 8.5, "height": 11, "unit": "in" },
+    "margins": { "top": 0.75, "bottom": 0.75, "inner": 0.75, "outer": 0.75 },
+    "bleed": 0
+  },
+  "themes": ["playful-bright", "classic-puzzle", "modern-sans"],
+  "defaultTheme": "playful-bright",
+  "features": {
+    "pageFlip": true,
+    "pageNumbers": true,
+    "chapters": true,
+    "tableOfContents": true
+  }
+}

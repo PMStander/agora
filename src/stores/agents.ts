@@ -98,7 +98,7 @@ interface AgentState {
   setAgentWorkspaceTab: (tab: AgentWorkspaceTab) => void;
 }
 
-export type AgentWorkspaceTab = 'overview' | 'identity' | 'skills' | 'files' | 'projects' | 'performance';
+export type AgentWorkspaceTab = 'overview' | 'identity' | 'skills' | 'files' | 'projects' | 'performance' | 'growth' | 'droid';
 
 // Our agent roster - 'main' maps to the default OpenClaw agent
 // Other agents would need to be configured in OpenClaw's multi-agent setup
@@ -1277,7 +1277,7 @@ function buildInitialProfiles(): Record<string, AgentFull> {
 
 export const useAgentStore = create<AgentState>()((set) => ({
   teams: initialTeams,
-  activeAgentId: 'main',
+  activeAgentId: 'alexander',
   messagesByAgent: {},
   sessionVersionsByAgent: {},
   pendingMissionContextByAgent: {},

@@ -1,0 +1,20 @@
+{
+  "name": "comic-book",
+  "displayName": "Comic Book",
+  "description": "Panel grid layouts with speech bubbles, caption boxes, and dynamic action frames.",
+  "category": "creative",
+  "tags": ["comic", "manga", "graphic-novel", "panels", "illustration"],
+  "defaults": {
+    "dimensions": { "width": 6.625, "height": 10.25, "unit": "in" },
+    "margins": { "top": 0.375, "bottom": 0.375, "inner": 0.5, "outer": 0.375 },
+    "bleed": 0.125
+  },
+  "themes": ["bold-graphic", "playful-bright", "candy-pastel"],
+  "defaultTheme": "bold-graphic",
+  "features": {
+    "pageFlip": true,
+    "pageNumbers": true,
+    "chapters": true,
+    "tableOfContents": false
+  }
+}

@@ -6,6 +6,11 @@ import { storeEmbedding } from '../lib/memoryIntelligence/embeddingService';
 import { extractHandoffIntent, executeHandoffIntent, buildAgentRoster, HANDOFF_SYSTEM_PROMPT } from '../lib/handoffExecution';
 import { buildProjectContextInjection } from '../lib/projectContextBuilder';
 import { useProjectsStore } from '../stores/projects';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { processCrmActions } from '../lib/crmActions';
+import { processGrowthActions } from '../lib/growthActions';
+import { processArtifactActions, stripArtifactActionBlocks } from '../lib/artifactActions';
+import { mergeDeltaBuffer } from '../lib/boardroomUtils';
 
 const SESSION_NAMESPACE = 'skills-v2';
 
@@ -80,9 +85,142 @@ function stripA2UIBlocks(text: string): string {
   return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/** Regex to detect CRM action JSON blocks embedded in agent text responses. */
+const CRM_ACTION_JSON_LINE = /^\s*\{[^}]*"type"\s*:\s*"crm_action"[^]*\}\s*$/;
+
+/**
+ * Strip CRM action JSON blocks from displayed chat text.
+ * Same pattern as stripA2UIBlocks — agents embed action JSON on standalone
+ * lines or inside code fences; we remove them from visible chat.
+ */
+function stripCrmActionBlocks(text: string): string {
+  if (!text) return text;
+  if (!text.includes('crm_action')) return text;
+
+  const lines = text.split('\n');
+  const kept: string[] = [];
+  let inCodeFence = false;
+  let fenceHasCrmAction = false;
+  let fenceLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith('```')) {
+      if (!inCodeFence) {
+        inCodeFence = true;
+        fenceHasCrmAction = false;
+        fenceLines = [line];
+        continue;
+      } else {
+        fenceLines.push(line);
+        inCodeFence = false;
+        if (!fenceHasCrmAction) {
+          kept.push(...fenceLines);
+        }
+        fenceLines = [];
+        continue;
+      }
+    }
+
+    if (inCodeFence) {
+      fenceLines.push(line);
+      if (CRM_ACTION_JSON_LINE.test(trimmed)) {
+        fenceHasCrmAction = true;
+      }
+      continue;
+    }
+
+    // Outside code fences: check standalone JSON lines
+    if (trimmed.startsWith('{') && CRM_ACTION_JSON_LINE.test(trimmed)) {
+      continue; // Strip this line
+    }
+
+    kept.push(line);
+  }
+
+  if (inCodeFence && fenceLines.length > 0) {
+    kept.push(...fenceLines);
+  }
+
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** Regex to detect growth action JSON blocks embedded in agent text responses. */
+const GROWTH_ACTION_JSON_LINE = /^\s*\{[^}]*"type"\s*:\s*"growth_action"[^]*\}\s*$/;
+
+/**
+ * Strip growth action JSON blocks from displayed chat text.
+ * Same pattern as stripCrmActionBlocks.
+ */
+function stripGrowthActionBlocks(text: string): string {
+  if (!text) return text;
+  if (!text.includes('growth_action')) return text;
+
+  const lines = text.split('\n');
+  const kept: string[] = [];
+  let inCodeFence = false;
+  let fenceHasGrowthAction = false;
+  let fenceLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith('```')) {
+      if (!inCodeFence) {
+        inCodeFence = true;
+        fenceHasGrowthAction = false;
+        fenceLines = [line];
+        continue;
+      } else {
+        fenceLines.push(line);
+        inCodeFence = false;
+        if (!fenceHasGrowthAction) {
+          kept.push(...fenceLines);
+        }
+        fenceLines = [];
+        continue;
+      }
+    }
+
+    if (inCodeFence) {
+      fenceLines.push(line);
+      if (GROWTH_ACTION_JSON_LINE.test(trimmed)) {
+        fenceHasGrowthAction = true;
+      }
+      continue;
+    }
+
+    // Outside code fences: check standalone JSON lines
+    if (trimmed.startsWith('{') && GROWTH_ACTION_JSON_LINE.test(trimmed)) {
+      continue; // Strip this line
+    }
+
+    kept.push(line);
+  }
+
+  if (inCodeFence && fenceLines.length > 0) {
+    kept.push(...fenceLines);
+  }
+
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** Gateway agent IDs that actually exist in openclaw.json agents.list */
+const GATEWAY_AGENT_IDS = new Set(['main', 'alexander', 'cleopatra', 'homer', 'hermes']);
+
+/**
+ * Map a UI agent id to a gateway agent id. UI agents like 'main' (Marcus Aurelius)
+ * or 'hippocrates' don't exist in the gateway — route them through 'alexander'.
+ */
+function resolveGatewayAgentId(uiAgentId: string): string {
+  return GATEWAY_AGENT_IDS.has(uiAgentId) ? uiAgentId : 'alexander';
+}
+
 function sessionKeyForAgent(agentId: string, version: number = 0): string {
+  const gatewayAgent = resolveGatewayAgentId(agentId);
   const versionSuffix = version > 0 ? `-ctx${version}` : '';
-  return `agent:${agentId}:${SESSION_NAMESPACE}${versionSuffix}`;
+  return `agent:${gatewayAgent}:${SESSION_NAMESPACE}${versionSuffix}`;
 }
 
 export type SubAgentRunState = 'queued' | 'running' | 'completed' | 'error';
@@ -135,27 +273,6 @@ function extractReasoning(message: any): string {
   return '';
 }
 
-function mergeDeltaBuffer(previous: string, incoming: string): string {
-  if (!incoming) return previous;
-  if (!previous) return incoming;
-
-  // Some gateways stream cumulative text, others stream chunks.
-  // Cumulative: incoming is the full response so far (supersedes previous)
-  if (incoming.startsWith(previous)) return incoming;
-  // Stale/duplicate: previous already contains incoming
-  if (previous.startsWith(incoming)) return previous;
-
-  // Heuristic: if the incoming text is longer than what we'd expect from a
-  // single chunk AND it shares a significant prefix with previous, the
-  // gateway is in cumulative mode but minor formatting differences caused
-  // the exact startsWith check to fail. Use the longer text.
-  if (incoming.length > previous.length * 0.8) {
-    return incoming;
-  }
-
-  // Append mode: gateway sends just the new token/chunk
-  return previous + incoming;
-}
 
 export function useOpenClaw() {
   const [status, setStatus] = useState<ConnectionStatus>(openclawClient.status);
@@ -312,7 +429,16 @@ export function useOpenClaw() {
 
           // Strip embedded A2UI JSON blocks from visible chat text.
           // The A2UI hook extracts these separately from the raw payload.
-          const finalContent = stripA2UIBlocks(noHandoff);
+          const strippedA2UI = stripA2UIBlocks(noHandoff);
+          // Strip embedded CRM action JSON blocks from visible chat text.
+          // processCrmActions extracts and executes them separately below.
+          const strippedCrm = stripCrmActionBlocks(strippedA2UI);
+          // Strip embedded growth action JSON blocks from visible chat text.
+          // processGrowthActions extracts and stores them separately below.
+          const strippedGrowth = stripGrowthActionBlocks(strippedCrm);
+          // Strip embedded artifact action JSON blocks from visible chat text.
+          // processArtifactActions reads files from disk and uploads to Supabase.
+          const finalContent = stripArtifactActionBlocks(strippedGrowth);
           updateLastMessage(targetAgent, {
             content: finalContent,
             reasoning: finalReasoning || undefined,
@@ -327,6 +453,27 @@ export function useOpenClaw() {
             storeEmbedding('chat_message', responseMsgId, targetAgent, finalContent).catch(() => {});
           }
 
+          // ── Execute CRM actions embedded in response (fire-and-forget) ──
+          if (rawContent.includes('crm_action')) {
+            processCrmActions(rawContent).catch((err) => {
+              console.error('[useOpenClaw] CRM action processing failed:', err);
+            });
+          }
+
+          // ── Store growth/reflection actions embedded in response (fire-and-forget) ──
+          if (rawContent.includes('growth_action')) {
+            processGrowthActions(rawContent, targetAgent).catch((err) => {
+              console.error('[useOpenClaw] Growth action processing failed:', err);
+            });
+          }
+
+          // ── Upload artifacts (PDFs, videos) generated by skills (fire-and-forget) ──
+          if (rawContent.includes('artifact_action')) {
+            processArtifactActions(rawContent, targetAgent).catch((err) => {
+              console.error('[useOpenClaw] Artifact action processing failed:', err);
+            });
+          }
+
           activeRunRef.current = null;
           if (staleRunTimerRef.current) {
             clearTimeout(staleRunTimerRef.current);
@@ -336,7 +483,7 @@ export function useOpenClaw() {
           // ── Execute smart handoff if agent requested one ──────────────
           if (handoffIntent) {
             console.log('[useOpenClaw] Handoff intent detected from', targetAgent, '→', handoffIntent.target_agent_id, '| action:', handoffIntent.action);
-            executeHandoffIntent(handoffIntent, targetAgent, sendMessageRef.current)
+            executeHandoffIntent(handoffIntent, targetAgent, sendMessageRef.current, useProjectsStore.getState().activeProjectForChat)
               .then((result) => {
                 const { addMessage: addMsg } = useAgentStore.getState();
                 if (result.success) {
@@ -453,7 +600,7 @@ export function useOpenClaw() {
           includePatterns: true,
           includeRecentSummary: true,
         }),
-        recallEntityContext(targetAgent, message, { maxResults: 5 }),
+        recallEntityContext(targetAgent, message),
       ]);
       if (recalled.formattedContext) {
         enrichedMessage = `${message}\n\n---\n<recalled_context>\n${recalled.formattedContext}\n</recalled_context>`;
@@ -489,6 +636,29 @@ export function useOpenClaw() {
     if (pendingMissionContext) {
       enrichedMessage += `\n\n${pendingMissionContext}`;
       useAgentStore.getState().clearPendingMissionContext(targetAgent);
+
+      // Fallback: resolve project from mission context if not already set
+      if (!activeProjectId && isSupabaseConfigured()) {
+        const missionIdMatch = pendingMissionContext.match(/mission_id="([^"]+)"/);
+        if (missionIdMatch?.[1]) {
+          try {
+            const { data: link } = await supabase
+              .from('project_missions')
+              .select('project_id')
+              .eq('mission_id', missionIdMatch[1])
+              .maybeSingle();
+            if (link?.project_id) {
+              useProjectsStore.getState().setActiveProjectForChat(link.project_id);
+              const projectInjection = await buildProjectContextInjection(link.project_id, targetAgent);
+              if (projectInjection) {
+                enrichedMessage += `\n\n${projectInjection}`;
+              }
+            }
+          } catch (err) {
+            console.warn('[useOpenClaw] Mission→project context fallback failed (non-blocking):', err);
+          }
+        }
+      }
     }
 
     // ── Auto-embed user message (fire-and-forget) ──────────────────────

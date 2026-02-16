@@ -14,7 +14,13 @@ export type NotificationType =
   | 'quote_declined'
   | 'email_received'
   | 'mention'
-  | 'system';
+  | 'system'
+  | 'agent_reflection'
+  | 'reflection_pattern'
+  | 'agent_session_proposed'
+  | 'agent_mission_created'
+  | 'agent_action_proposed'
+  | 'resolution_ready';
 
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error';
 
@@ -26,7 +32,9 @@ export type NotificationLinkType =
   | 'quote'
   | 'workflow_run'
   | 'mission'
-  | 'project';
+  | 'project'
+  | 'agent'
+  | 'session';
 
 export interface Notification {
   id: string;
@@ -63,6 +71,12 @@ export const NOTIFICATION_TYPE_CONFIG: Record<
   email_received: { label: 'Email Received', icon: '📧', defaultSeverity: 'info' },
   mention: { label: 'Mention', icon: '@', defaultSeverity: 'info' },
   system: { label: 'System', icon: '🔔', defaultSeverity: 'info' },
+  agent_reflection: { label: 'Agent Reflection', icon: '🪞', defaultSeverity: 'info' },
+  reflection_pattern: { label: 'Reflection Pattern', icon: '⚠️', defaultSeverity: 'warning' },
+  agent_session_proposed: { label: 'Meeting Proposed', icon: '🤝', defaultSeverity: 'warning' },
+  agent_mission_created: { label: 'Mission Created', icon: '🎯', defaultSeverity: 'info' },
+  agent_action_proposed: { label: 'Action Proposed', icon: '📋', defaultSeverity: 'warning' },
+  resolution_ready: { label: 'Resolution Ready', icon: '📦', defaultSeverity: 'warning' },
 };
 
 export const SEVERITY_CONFIG: Record<

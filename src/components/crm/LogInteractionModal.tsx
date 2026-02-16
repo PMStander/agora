@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCRM } from '../../hooks/useCRM';
 import { useCrmStore } from '../../stores/crm';
 import {
@@ -12,12 +12,16 @@ interface LogInteractionModalProps {
   isOpen: boolean;
   onClose: () => void;
   prefillContactId?: string;
+  prefillCompanyId?: string;
+  prefillDealId?: string;
 }
 
 export function LogInteractionModal({
   isOpen,
   onClose,
   prefillContactId,
+  prefillCompanyId,
+  prefillDealId,
 }: LogInteractionModalProps) {
   const { logInteraction } = useCRM();
   const contacts = useCrmStore((s) => s.contacts);
@@ -31,15 +35,21 @@ export function LogInteractionModal({
   const [durationMinutes, setDurationMinutes] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [contactId, setContactId] = useState(prefillContactId ?? '');
-  const [companyId, setCompanyId] = useState('');
-  const [dealId, setDealId] = useState('');
+  const [companyId, setCompanyId] = useState(prefillCompanyId ?? '');
+  const [dealId, setDealId] = useState(prefillDealId ?? '');
   const [agentId, setAgentId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Sync prefill when it changes
-  useState(() => {
+  // Sync prefills when they change
+  useEffect(() => {
     if (prefillContactId) setContactId(prefillContactId);
-  });
+  }, [prefillContactId]);
+  useEffect(() => {
+    if (prefillCompanyId) setCompanyId(prefillCompanyId);
+  }, [prefillCompanyId]);
+  useEffect(() => {
+    if (prefillDealId) setDealId(prefillDealId);
+  }, [prefillDealId]);
 
   if (!isOpen) return null;
 
@@ -51,8 +61,8 @@ export function LogInteractionModal({
     setDurationMinutes('');
     setScheduledAt('');
     setContactId(prefillContactId ?? '');
-    setCompanyId('');
-    setDealId('');
+    setCompanyId(prefillCompanyId ?? '');
+    setDealId(prefillDealId ?? '');
     setAgentId('');
   };
 

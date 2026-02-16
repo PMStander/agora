@@ -10,7 +10,7 @@
  *    - https://www.googleapis.com/auth/gmail.send
  *    - https://www.googleapis.com/auth/gmail.readonly
  *    - https://www.googleapis.com/auth/gmail.modify
- * 6. Set VITE_GMAIL_CLIENT_ID and VITE_GMAIL_CLIENT_SECRET in .env
+ * 6. Set VITE_GMAIL_CLIENT_ID and VITE_GOOGLE_OAUTH_CLIENT_SECRET in .env
  *
  * OAuth flow for Tauri desktop app:
  * - Uses tauri-plugin-shell to open the consent screen in the default browser
@@ -24,7 +24,10 @@ import type { EmailAccount } from '../types/email';
 // ─── Config ─────────────────────────────────────────────────────────────────
 
 const GMAIL_CLIENT_ID = import.meta.env.VITE_GMAIL_CLIENT_ID || '';
-const GMAIL_CLIENT_SECRET = import.meta.env.VITE_GMAIL_CLIENT_SECRET || '';
+// For desktop OAuth apps, Google considers the client_secret non-confidential.
+// See: https://developers.google.com/identity/protocols/oauth2/native-app
+// For a web deployment, move token exchange to a Supabase Edge Function.
+const GMAIL_CLIENT_SECRET = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_SECRET || '';
 const GMAIL_REDIRECT_URI = 'http://localhost:8234/oauth/callback';
 const GMAIL_SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',

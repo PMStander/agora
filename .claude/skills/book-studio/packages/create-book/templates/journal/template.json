@@ -1,0 +1,20 @@
+{
+  "name": "journal",
+  "displayName": "Journal / Planner",
+  "description": "Structured daily pages with gratitude, focus, and notes sections. Great for guided journals.",
+  "category": "personal",
+  "tags": ["journal", "planner", "daily", "gratitude", "wellness"],
+  "defaults": {
+    "dimensions": { "width": 5.5, "height": 8.5, "unit": "in" },
+    "margins": { "top": 0.5, "bottom": 0.5, "inner": 0.75, "outer": 0.5 },
+    "bleed": 0
+  },
+  "themes": ["clean-monochrome", "soft-pastel", "modern-sans"],
+  "defaultTheme": "clean-monochrome",
+  "features": {
+    "pageFlip": true,
+    "pageNumbers": true,
+    "chapters": false,
+    "tableOfContents": false
+  }
+}

@@ -4,6 +4,8 @@ import { getIncompleteDependencyTitles } from '../../lib/taskDependencies';
 import { useMissionControl } from '../../hooks/useMissionControl';
 import { useMissionControlStore, useSelectedMission } from '../../stores/missionControl';
 import { useAgentStore } from '../../stores/agents';
+import { useProjectsStore } from '../../stores/projects';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { getAgent, type MissionPhase } from '../../types/supabase';
 
 const phaseOrder: MissionPhase[] = ['statement', 'plan', 'tasks'];
@@ -162,10 +164,27 @@ export function MissionLifecyclePanel() {
     }
   };
 
-  const handleChatAboutMission = () => {
+  const handleChatAboutMission = async () => {
     if (!mission) return;
-    // Use the mission's agent, fallback to 'main' if not found in roster
-    const agentId = getAgent(mission.agent_id) ? mission.agent_id : 'main';
+    // Use the mission's agent, fallback to 'alexander' if not found in roster
+    const agentId = getAgent(mission.agent_id) ? mission.agent_id : 'alexander';
+
+    // Auto-set project context if this mission is linked to a project
+    if (isSupabaseConfigured()) {
+      try {
+        const { data: link } = await supabase
+          .from('project_missions')
+          .select('project_id')
+          .eq('mission_id', mission.id)
+          .maybeSingle();
+        if (link?.project_id) {
+          useProjectsStore.getState().setActiveProjectForChat(link.project_id);
+        }
+      } catch (err) {
+        console.warn('[MissionLifecycle] Failed to resolve project for mission:', err);
+      }
+    }
+
     chatAboutMission(agentId, mission);
     selectTask(null);
     selectMission(null);

@@ -10,9 +10,10 @@ export type BoardroomSessionType =
   | 'watercooler'
   | 'debate'
   | 'war_room'
-  | 'custom';
+  | 'custom'
+  | 'chat';
 
-export type BoardroomSessionStatus = 'scheduled' | 'preparing' | 'open' | 'active' | 'closed';
+export type BoardroomSessionStatus = 'proposed' | 'scheduled' | 'preparing' | 'open' | 'active' | 'closed' | 'declined';
 
 export interface BoardroomSession {
   id: string;
@@ -29,6 +30,7 @@ export interface BoardroomSession {
   ended_at: string | null;
   created_by: string; // 'user' or an agent ID
   metadata: BoardroomSessionMetadata;
+  project_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -73,11 +75,133 @@ export interface PrepResult {
   completed_at?: string;
 }
 
+// ─── Prep Documents ──────────────────────────────────────────────────────
+
+export interface PrepDocument {
+  agent_id: string;
+  title: string;
+  path: string;
+  status: 'pending' | 'done' | 'failed';
+}
+
+// ─── Routing & Session Control ─────────────────────────────────────────────
+
+export type RoutingMode = 'smart' | 'round-robin';
+
+export type SessionPhase = 'opening' | 'discussion' | 'wrap-up';
+
+export interface TurnTracking {
+  agent_id: string;
+  turn_count: number;
+  last_mentioned_turn?: number;
+  last_spoke_turn?: number;
+}
+
+export interface SessionSummary {
+  decisions: string[];
+  action_items: Array<{ task: string; owner?: string }>;
+  unresolved: string[];
+  generated_at: string;
+}
+
+export interface DisagreementTracking {
+  turn: number;
+  agents: string[];
+  topic: string;
+  resolved: boolean;
+}
+
+// ─── Resolution Package ─────────────────────────────────────────────────────
+
+export type ResolutionMode = 'auto' | 'propose' | 'none';
+
+export type ResolutionItemStatus = 'pending' | 'approved' | 'rejected' | 'created';
+
+export interface ResolutionMission {
+  title: string;
+  description: string;
+  agent_id: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  dependencies?: string[];
+  scheduled_at?: string;
+  source_excerpt: string;
+}
+
+export interface ResolutionProject {
+  name: string;
+  description: string;
+  mission_ids: string[];
+  source_excerpt: string;
+}
+
+export interface ResolutionDocument {
+  title: string;
+  description: string;
+  agent_id: string;
+  type: 'brief' | 'spec' | 'proposal' | 'report';
+  source_excerpt: string;
+}
+
+export interface ResolutionCRMAction {
+  type: 'company' | 'contact' | 'deal';
+  action: 'create' | 'update';
+  name: string;
+  details: Record<string, any>;
+  source_excerpt: string;
+}
+
+export interface ResolutionFollowUpMeeting {
+  title: string;
+  topic: string;
+  participant_agent_ids: string[];
+  agenda: string[];
+  scheduled_at?: string;
+  unresolved_items: string[];
+  source_excerpt: string;
+}
+
+export interface ResolutionCalendarEvent {
+  title: string;
+  description: string;
+  start_time: string;
+  duration_minutes: number;
+  attendees: string[];
+  source_excerpt: string;
+}
+
+export interface ResolutionQuote {
+  customer: string;
+  description: string;
+  items: Array<{ description: string; amount?: number }>;
+  source_excerpt: string;
+}
+
+export interface ResolutionPackageItem {
+  id: string;
+  type: 'mission' | 'project' | 'document' | 'crm' | 'follow_up' | 'event' | 'quote';
+  status: ResolutionItemStatus;
+  data: ResolutionMission | ResolutionProject | ResolutionDocument | ResolutionCRMAction | ResolutionFollowUpMeeting | ResolutionCalendarEvent | ResolutionQuote;
+  created_id?: string; // ID of the created object (mission_id, session_id, etc.)
+  error?: string;
+}
+
+export interface ResolutionPackage {
+  session_id: string;
+  generated_at: string;
+  items: ResolutionPackageItem[];
+  mode: ResolutionMode;
+  approved_at?: string;
+  approved_by?: string;
+}
+
 // ─── Session Metadata ────────────────────────────────────────────────────
 
 export interface BoardroomSessionMetadata {
   entity_references?: EntityReference[];
   attachments?: MediaAttachment[];
+  agenda?: string[];
+  context?: string;
+  prep_documents?: PrepDocument[];
   preparation?: {
     assignments: PrepAssignment[];
     results: PrepResult[];
@@ -85,7 +209,55 @@ export interface BoardroomSessionMetadata {
     started_at?: string;
     completed_at?: string;
   };
+  routing_mode?: RoutingMode;
+  auto_start?: boolean;
+  notify_whatsapp?: boolean;
+  turn_tracking?: TurnTracking[];
+  session_summary?: SessionSummary;
+  current_phase?: SessionPhase;
+  extension_count?: number;
+  disagreements?: DisagreementTracking[];
+  resolution_mode?: ResolutionMode;
+  resolution_package?: ResolutionPackage;
+  user_participation?: UserParticipation;
+  last_routing_decision?: {
+    turn: number;
+    chosen_agent: string;
+    reasoning: string;
+    timestamp: string;
+  };
+  cloned_from_session_id?: string;
+  // Agent proposal fields
+  proposal_reason?: string;
+  proposal_urgency?: 'low' | 'medium' | 'high' | 'critical';
+  proposed_by_context?: string; // what the agent was doing when it proposed
+  // Follow-up depth tracking (prevents infinite recursion)
+  follow_up_depth?: number;
+  source_session_id?: string;
   [key: string]: unknown; // allow additional ad-hoc fields
+}
+
+// ─── User Participation ──────────────────────────────────────────────────
+
+export interface UserParticipation {
+  enabled: boolean;
+  user_turn_timeout_ms?: number; // How long to wait for user input (default 5 min)
+  user_raised_hand?: boolean; // User signaled they want to speak
+  waiting_for_user?: boolean; // Orchestrator is paused waiting for user
+  decision_points?: Array<{
+    turn: number;
+    question: string;
+    resolved: boolean;
+  }>;
+}
+
+export type MessageSenderType = 'user' | 'agent' | 'system';
+
+export interface MessageMention {
+  type: 'agent' | 'entity';
+  id: string;
+  display: string;
+  entity_type?: EntityReferenceType;
 }
 
 export interface BoardroomMessage {
@@ -95,6 +267,8 @@ export interface BoardroomMessage {
   content: string;
   reasoning: string | null;
   turn_number: number;
+  sender_type: MessageSenderType;
+  mentions: MessageMention[];
   created_at: string;
 }
 
@@ -173,6 +347,14 @@ export const SESSION_TYPE_PRESETS: SessionTypePreset[] = [
     description: 'Define your own session format',
     defaultMaxTurns: 10,
     guidance: 'Respond thoughtfully to the session topic. Follow any specific instructions provided. Engage constructively with other participants.',
+  },
+  {
+    type: 'chat',
+    label: 'Project Chat',
+    icon: '💬',
+    description: 'Open-ended team conversation',
+    defaultMaxTurns: 999,
+    guidance: 'You are in a project team chat. Respond naturally and helpfully to the user. Build on what other team members have said. Be concise but thorough. If the question is outside your expertise, say so and suggest which team member might be better suited.',
   },
 ];
 

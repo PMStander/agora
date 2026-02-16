@@ -1,5 +1,6 @@
 import { useCrmStore, useDealsByCompany, useDealsByContact } from '../../../../stores/crm';
 import { ProfileEmptyState } from '../ProfileEmptyState';
+import { TabHeader } from './TabHeader';
 import { DEAL_STATUS_CONFIG } from '../../../../types/crm';
 
 function formatCurrency(amount: number | null, currency = 'USD'): string {
@@ -26,7 +27,13 @@ const STATUS_COLORS: Record<string, string> = {
   zinc: 'bg-zinc-500/20 text-zinc-400',
 };
 
-export default function DealsTab({ entityType, entityId }: { entityType: string; entityId: string }) {
+interface DealsTabProps {
+  entityType: string;
+  entityId: string;
+  onAddDeal?: () => void;
+}
+
+export default function DealsTab({ entityType, entityId, onAddDeal }: DealsTabProps) {
   const navigateToProfile = useCrmStore(s => s.navigateToProfile);
   const pipelines = useCrmStore(s => s.pipelines);
 
@@ -35,7 +42,7 @@ export default function DealsTab({ entityType, entityId }: { entityType: string;
 
   const deals = entityType === 'contact' ? contactDeals : companyDeals;
 
-  if (!deals.length) return <ProfileEmptyState message="No deals yet" />;
+  if (!deals.length) return <ProfileEmptyState message="No deals yet" actionLabel="Create Deal" onAction={onAddDeal} />;
 
   const getStageName = (pipelineId: string, stageId: string) => {
     const pipeline = pipelines.find(p => p.id === pipelineId);
@@ -45,7 +52,7 @@ export default function DealsTab({ entityType, entityId }: { entityType: string;
 
   return (
     <div>
-      <p className="text-xs text-zinc-500 mb-3">{deals.length} deal{deals.length !== 1 ? 's' : ''}</p>
+      <TabHeader count={deals.length} noun="deal" actionLabel="Create Deal" onAction={onAddDeal} />
       <div className="space-y-2">
         {deals.map(deal => {
           const statusCfg = DEAL_STATUS_CONFIG[deal.status];

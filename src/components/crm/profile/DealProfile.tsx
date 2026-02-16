@@ -1,9 +1,11 @@
 import { useState, Suspense, lazy } from 'react';
 import { useCrmStore } from '../../../stores/crm';
+import { useCRM } from '../../../hooks/useCRM';
 import { ProfileTabBar, type ProfileTab } from './ProfileTabBar';
 import { ProfileEmptyState } from './ProfileEmptyState';
 import { DEAL_STATUS_CONFIG } from '../../../types/crm';
-import { getAgent } from '../../../types/supabase';
+import { getAgent, AGENTS } from '../../../types/supabase';
+import { LogInteractionModal } from '../LogInteractionModal';
 
 const QuotesTab = lazy(() => import('./tabs/QuotesTab'));
 const InvoicesTab = lazy(() => import('./tabs/InvoicesTab'));
@@ -11,6 +13,7 @@ const EmailsTab = lazy(() => import('./tabs/EmailsTab'));
 const EventsTab = lazy(() => import('./tabs/EventsTab'));
 const InteractionsTab = lazy(() => import('./tabs/InteractionsTab'));
 const DocumentsTab = lazy(() => import('./tabs/DocumentsTab'));
+const ProjectsTab = lazy(() => import('./tabs/ProjectsTab'));
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -28,10 +31,15 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   urgent: { label: 'Urgent', color: 'bg-red-500/20 text-red-400' },
 };
 
+const CURRENCY_OPTIONS = ['USD', 'EUR', 'GBP', 'ZAR', 'AUD', 'CAD', 'JPY'];
+
 function formatCurrency(amount: number | null, currency = 'USD'): string {
   if (amount == null) return '--';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: 0 }).format(amount);
 }
+
+const INPUT_CLASS =
+  'w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 focus:border-amber-500/50 focus:outline-none transition-colors';
 
 const TABS: ProfileTab[] = [
   { id: 'overview', label: 'Overview', icon: '📋' },
@@ -40,6 +48,7 @@ const TABS: ProfileTab[] = [
   { id: 'emails', label: 'Emails', icon: '📧' },
   { id: 'events', label: 'Events', icon: '📅' },
   { id: 'interactions', label: 'Interactions', icon: '💬' },
+  { id: 'projects', label: 'Projects', icon: '📐' },
   { id: 'documents', label: 'Documents', icon: '📁' },
 ];
 
@@ -58,6 +67,7 @@ export default function DealProfile({ dealId }: { dealId: string }) {
   const pipelines = useCrmStore((s) => s.pipelines);
   const navigateToProfile = useCrmStore((s) => s.navigateToProfile);
   const [activeTab, setActiveTab] = useState('overview');
+  const [showLogInteraction, setShowLogInteraction] = useState(false);
 
   if (!deal) {
     return <ProfileEmptyState message="Deal not found" />;
@@ -105,6 +115,16 @@ export default function DealProfile({ dealId }: { dealId: string }) {
             )}
           </div>
         </div>
+
+        {/* Quick Actions */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => setShowLogInteraction(true)}
+            className="px-2.5 py-1 text-xs font-medium bg-zinc-700/50 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors"
+          >
+            Log
+          </button>
+        </div>
       </div>
 
       {/* Tab Bar */}
@@ -115,6 +135,7 @@ export default function DealProfile({ dealId }: { dealId: string }) {
         {activeTab === 'overview' && (
           <OverviewContent
             deal={deal}
+            dealId={dealId}
             pipeline={pipeline}
             currentStage={currentStage}
             contact={contact}
@@ -150,7 +171,17 @@ export default function DealProfile({ dealId }: { dealId: string }) {
 
         {activeTab === 'interactions' && (
           <Suspense fallback={<TabLoading />}>
-            <InteractionsTab entityType="deal" entityId={dealId} />
+            <InteractionsTab
+              entityType="deal"
+              entityId={dealId}
+              onLogInteraction={() => setShowLogInteraction(true)}
+            />
+          </Suspense>
+        )}
+
+        {activeTab === 'projects' && (
+          <Suspense fallback={<TabLoading />}>
+            <ProjectsTab entityType="deal" entityId={dealId} />
           </Suspense>
         )}
 
@@ -160,6 +191,15 @@ export default function DealProfile({ dealId }: { dealId: string }) {
           </Suspense>
         )}
       </div>
+
+      {/* Modals */}
+      <LogInteractionModal
+        isOpen={showLogInteraction}
+        onClose={() => setShowLogInteraction(false)}
+        prefillDealId={dealId}
+        prefillContactId={deal.contact_id ?? undefined}
+        prefillCompanyId={deal.company_id ?? undefined}
+      />
     </div>
   );
 }
@@ -168,6 +208,7 @@ export default function DealProfile({ dealId }: { dealId: string }) {
 
 function OverviewContent({
   deal,
+  dealId,
   pipeline,
   currentStage,
   contact,
@@ -176,6 +217,7 @@ function OverviewContent({
   navigateToProfile,
 }: {
   deal: NonNullable<ReturnType<typeof useCrmStore.getState>['deals'][number]>;
+  dealId: string;
   pipeline: ReturnType<typeof useCrmStore.getState>['pipelines'][number] | undefined;
   currentStage: { id: string; name: string; probability: number } | undefined;
   contact: ReturnType<typeof useCrmStore.getState>['contacts'][number] | null | undefined;
@@ -183,46 +225,213 @@ function OverviewContent({
   agent: ReturnType<typeof getAgent>;
   navigateToProfile: ReturnType<typeof useCrmStore.getState>['navigateToProfile'];
 }) {
+  const { updateDealDetails } = useCRM();
   const dealStatusConfig = DEAL_STATUS_CONFIG[deal.status];
   const priorityConfig = PRIORITY_CONFIG[deal.priority] || PRIORITY_CONFIG.medium;
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(deal.title);
+  const [editDescription, setEditDescription] = useState(deal.description ?? '');
+  const [editAmount, setEditAmount] = useState(deal.amount?.toString() ?? '');
+  const [editCurrency, setEditCurrency] = useState(deal.currency ?? 'USD');
+  const [editPriority, setEditPriority] = useState(deal.priority ?? 'medium');
+  const [editCloseDate, setEditCloseDate] = useState(deal.close_date ?? '');
+  const [editTags, setEditTags] = useState(deal.tags.join(', '));
+  const [editOwnerAgentId, setEditOwnerAgentId] = useState(deal.owner_agent_id ?? '');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const startEditing = () => {
+    setEditTitle(deal.title);
+    setEditDescription(deal.description ?? '');
+    setEditAmount(deal.amount?.toString() ?? '');
+    setEditCurrency(deal.currency ?? 'USD');
+    setEditPriority(deal.priority ?? 'medium');
+    setEditCloseDate(deal.close_date ?? '');
+    setEditTags(deal.tags.join(', '));
+    setEditOwnerAgentId(deal.owner_agent_id ?? '');
+    setIsEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setIsEditing(false);
+  };
+
+  const saveEdits = async () => {
+    setIsSaving(true);
+    try {
+      const parsedAmount = editAmount.trim() ? parseFloat(editAmount) : null;
+      const parsedTags = editTags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+
+      await updateDealDetails(dealId, {
+        title: editTitle.trim() || deal.title,
+        description: editDescription.trim() || null,
+        amount: isNaN(parsedAmount as number) ? deal.amount : parsedAmount,
+        currency: editCurrency,
+        priority: editPriority as 'low' | 'medium' | 'high' | 'urgent',
+        close_date: editCloseDate || null,
+        tags: parsedTags,
+        owner_agent_id: editOwnerAgentId || null,
+      });
+      setIsEditing(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {/* Deal Info */}
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
-        <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">
-          Deal Info
-        </h3>
-        <div className="space-y-2.5">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-zinc-500 w-24 shrink-0">Amount</span>
-            <span className="text-amber-400 font-semibold">{formatCurrency(deal.amount, deal.currency)}</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-zinc-500 w-24 shrink-0">Status</span>
-            <span className={`px-2 py-0.5 text-xs rounded-full ${STATUS_COLORS[deal.status] ?? STATUS_COLORS.open}`}>
-              {dealStatusConfig.label}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-zinc-500 w-24 shrink-0">Priority</span>
-            <span className={`px-2 py-0.5 text-xs rounded-full ${priorityConfig.color}`}>
-              {priorityConfig.label}
-            </span>
-          </div>
-          <InfoRow label="Pipeline" value={pipeline?.name} />
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-zinc-500 w-24 shrink-0">Stage</span>
-            <span className="text-zinc-300">
-              {currentStage?.name || '--'}
-              {currentStage && <span className="text-zinc-600 ml-1">({currentStage.probability}%)</span>}
-            </span>
-          </div>
-          <InfoRow label="Close Date" value={deal.close_date ? new Date(deal.close_date).toLocaleDateString() : null} />
-          {deal.description && (
-            <div className="pt-2 border-t border-zinc-800">
-              <p className="text-sm text-zinc-400">{deal.description}</p>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+            Deal Info
+          </h3>
+          {!isEditing ? (
+            <button
+              onClick={startEditing}
+              className="px-2.5 py-1 text-xs font-medium bg-zinc-700/50 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors"
+            >
+              Edit
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={cancelEditing}
+                disabled={isSaving}
+                className="px-2.5 py-1 text-xs font-medium bg-zinc-700/50 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveEdits}
+                disabled={isSaving}
+                className="px-2.5 py-1 text-xs font-medium bg-amber-600/80 text-white rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50"
+              >
+                {isSaving ? 'Saving...' : 'Save'}
+              </button>
             </div>
+          )}
+        </div>
+        <div className="space-y-2.5">
+          {isEditing ? (
+            <>
+              <EditRow label="Title">
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className={INPUT_CLASS}
+                />
+              </EditRow>
+              <EditRow label="Amount">
+                <input
+                  type="number"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                  placeholder="0"
+                  className={INPUT_CLASS}
+                />
+              </EditRow>
+              <EditRow label="Currency">
+                <select
+                  value={editCurrency}
+                  onChange={(e) => setEditCurrency(e.target.value)}
+                  className={INPUT_CLASS}
+                >
+                  {CURRENCY_OPTIONS.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </EditRow>
+              <EditRow label="Priority">
+                <select
+                  value={editPriority}
+                  onChange={(e) => setEditPriority(e.target.value)}
+                  className={INPUT_CLASS}
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </EditRow>
+              <EditRow label="Close Date">
+                <input
+                  type="date"
+                  value={editCloseDate}
+                  onChange={(e) => setEditCloseDate(e.target.value)}
+                  className={INPUT_CLASS}
+                />
+              </EditRow>
+              <EditRow label="Description">
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  rows={3}
+                  placeholder="Deal description..."
+                  className={INPUT_CLASS + ' resize-none'}
+                />
+              </EditRow>
+              <EditRow label="Tags">
+                <input
+                  type="text"
+                  value={editTags}
+                  onChange={(e) => setEditTags(e.target.value)}
+                  placeholder="tag1, tag2, ..."
+                  className={INPUT_CLASS}
+                />
+              </EditRow>
+              <EditRow label="Owner">
+                <select
+                  value={editOwnerAgentId}
+                  onChange={(e) => setEditOwnerAgentId(e.target.value)}
+                  className={INPUT_CLASS}
+                >
+                  <option value="">Unassigned</option>
+                  {AGENTS.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.emoji} {a.name}
+                    </option>
+                  ))}
+                </select>
+              </EditRow>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-zinc-500 w-24 shrink-0">Amount</span>
+                <span className="text-amber-400 font-semibold">{formatCurrency(deal.amount, deal.currency)}</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-zinc-500 w-24 shrink-0">Status</span>
+                <span className={`px-2 py-0.5 text-xs rounded-full ${STATUS_COLORS[deal.status] ?? STATUS_COLORS.open}`}>
+                  {dealStatusConfig.label}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-zinc-500 w-24 shrink-0">Priority</span>
+                <span className={`px-2 py-0.5 text-xs rounded-full ${priorityConfig.color}`}>
+                  {priorityConfig.label}
+                </span>
+              </div>
+              <InfoRow label="Pipeline" value={pipeline?.name} />
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-zinc-500 w-24 shrink-0">Stage</span>
+                <span className="text-zinc-300">
+                  {currentStage?.name || '--'}
+                  {currentStage && <span className="text-zinc-600 ml-1">({currentStage.probability}%)</span>}
+                </span>
+              </div>
+              <InfoRow label="Close Date" value={deal.close_date ? new Date(deal.close_date).toLocaleDateString() : null} />
+              {deal.description && (
+                <div className="pt-2 border-t border-zinc-800">
+                  <p className="text-sm text-zinc-400">{deal.description}</p>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -323,6 +532,15 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
     <div className="flex items-center gap-2 text-sm">
       <span className="text-zinc-500 w-24 shrink-0">{label}</span>
       <span className="text-zinc-300 truncate">{value || '--'}</span>
+    </div>
+  );
+}
+
+function EditRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2 text-sm">
+      <span className="text-zinc-500 w-24 shrink-0 pt-1.5">{label}</span>
+      <div className="flex-1">{children}</div>
     </div>
   );
 }

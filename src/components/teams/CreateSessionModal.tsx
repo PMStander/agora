@@ -10,6 +10,7 @@ import {
   type PrepAssignment,
   type PrepMode,
 } from '../../types/boardroom';
+import { getDefaultResolutionMode } from '../../lib/boardroomResolution';
 import type { MediaAttachment } from '../../types/supabase';
 
 interface CreateSessionModalProps {
@@ -116,7 +117,19 @@ export function CreateSessionModal({ isOpen, onClose, onCreateSession }: CreateS
   const handleSubmit = () => {
     if (!title.trim() || selectedAgents.size === 0) return;
 
-    const metadata: BoardroomSessionMetadata = {};
+    const hasUserParticipant = selectedAgents.has('user');
+    
+    const metadata: BoardroomSessionMetadata = {
+      routing_mode: 'smart', // Default to smart routing
+      auto_start: scheduleMode === 'later', // Auto-start scheduled sessions by default
+      notify_whatsapp: scheduleMode === 'later', // WhatsApp notifications for scheduled sessions
+      resolution_mode: getDefaultResolutionMode(sessionType), // Default resolution mode based on session type
+      user_participation: hasUserParticipant ? {
+        enabled: true,
+        user_turn_timeout_ms: 300_000, // 5 minutes
+      } : undefined,
+    };
+    
     if (entityRefs.length > 0) metadata.entity_references = entityRefs;
     if (attachments.length > 0) metadata.attachments = attachments;
     if (hasPrepWork) {
@@ -382,6 +395,34 @@ export function CreateSessionModal({ isOpen, onClose, onCreateSession }: CreateS
             <label className="text-xs text-zinc-500 uppercase tracking-wider block mb-2">
               Participants ({selectedAgents.size} selected)
             </label>
+            
+            {/* User participation option */}
+            <div className="mb-3 pb-3 border-b border-zinc-800">
+              <button
+                onClick={() => toggleAgent('user')}
+                className={`
+                  flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all border w-full
+                  ${selectedAgents.has('user')
+                    ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
+                    : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                  }
+                `}
+              >
+                <span>👤</span>
+                <span className="flex-1 text-left">Include yourself in this session</span>
+                {selectedAgents.has('user') && (
+                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400">
+                    You'll participate
+                  </span>
+                )}
+              </button>
+              {selectedAgents.has('user') && (
+                <p className="text-[10px] text-zinc-500 mt-1.5 ml-1">
+                  You'll be able to contribute during the conversation. In round-robin mode, you'll get your turn. In smart routing, you can raise your hand or the system will ask for your input when needed.
+                </p>
+              )}
+            </div>
+
             <div className="space-y-3">
               {teams.map((team) => {
                 const allSelected = team.agents.every((a) => selectedAgents.has(a.id));

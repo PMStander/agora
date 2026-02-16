@@ -530,8 +530,60 @@ function buildRevisionInputText(mission, feedbackSummary, feedbackInstructions) 
   ].filter(Boolean).join('\n');
 }
 
+function resolveOpenClawBinary() {
+  // 1. Try OPENCLAW_HOME env var (new in 2026.2.9)
+  if (process.env.OPENCLAW_HOME) {
+    const homeCandidate = resolve(process.env.OPENCLAW_HOME, 'bin', 'openclaw');
+    if (existsSync(homeCandidate)) {
+      return homeCandidate;
+    }
+  }
+
+  // 2. Try openclaw in PATH first (handles nvm when PATH is inherited)
+  const pathResult = spawnSync('which', ['openclaw'], {
+    encoding: 'utf8',
+    env: process.env,
+  });
+  if (pathResult.status === 0 && pathResult.stdout.trim()) {
+    return pathResult.stdout.trim();
+  }
+
+  // 3. Search common installation paths
+  const homeDir = process.env.HOME || '/Users/peetstander';
+  const nvmNodeVersion = process.env.NVM_BIN
+    ? process.env.NVM_BIN.split('/').slice(-2, -1)[0]
+    : null;
+
+  const candidatePaths = [
+    // nvm (current version from NVM_BIN)
+    nvmNodeVersion ? `${homeDir}/.nvm/versions/node/${nvmNodeVersion}/bin/openclaw` : null,
+    // nvm (fallback to common LTS versions)
+    `${homeDir}/.nvm/versions/node/v22.19.0/bin/openclaw`,
+    `${homeDir}/.nvm/versions/node/v20.18.1/bin/openclaw`,
+    `${homeDir}/.nvm/versions/node/v18.20.5/bin/openclaw`,
+    // Homebrew
+    '/opt/homebrew/bin/openclaw',
+    '/usr/local/bin/openclaw',
+    // Global npm (homebrew node)
+    '/opt/homebrew/Cellar/node/23.2.0/bin/openclaw',
+    `${homeDir}/.npm-global/bin/openclaw`,
+  ].filter(Boolean);
+
+  for (const candidate of candidatePaths) {
+    if (existsSync(candidate)) {
+      log(`Resolved openclaw binary: ${candidate}`);
+      return candidate;
+    }
+  }
+
+  // 4. Fallback to 'openclaw' and hope it's in PATH
+  log('Warning: openclaw binary not found in common paths, using PATH fallback');
+  return 'openclaw';
+}
+
 function runOpenClawAgent(agentId, prompt, timeoutSec) {
   return new Promise((resolve, reject) => {
+    const openclawBinary = resolveOpenClawBinary();
     const args = [
       'agent',
       '--agent',
@@ -543,7 +595,7 @@ function runOpenClawAgent(agentId, prompt, timeoutSec) {
       String(timeoutSec),
     ];
 
-    const child = spawn('openclaw', args, {
+    const child = spawn(openclawBinary, args, {
       cwd: ROOT_DIR,
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],

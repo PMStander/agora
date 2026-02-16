@@ -1,0 +1,20 @@
+{
+  "name": "photo-book",
+  "displayName": "Photo Book",
+  "description": "Square format photo album with grid layouts, captions, and timeline spreads.",
+  "category": "personal",
+  "tags": ["photo", "album", "photography", "memories", "travel"],
+  "defaults": {
+    "dimensions": { "width": 12, "height": 12, "unit": "in" },
+    "margins": { "top": 0.5, "bottom": 0.5, "inner": 0.75, "outer": 0.5 },
+    "bleed": 0.125
+  },
+  "themes": ["modern-minimalist", "clean-monochrome", "bold-graphic"],
+  "defaultTheme": "modern-minimalist",
+  "features": {
+    "pageFlip": true,
+    "pageNumbers": false,
+    "chapters": true,
+    "tableOfContents": false
+  }
+}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCRM } from '../../hooks/useCRM';
 import { useCrmStore } from '../../stores/crm';
 import type { LifecycleStatus } from '../../types/crm';
@@ -10,11 +10,12 @@ import { AGENTS } from '../../types/supabase';
 interface CreateContactModalProps {
   isOpen: boolean;
   onClose: () => void;
+  prefillCompanyId?: string;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function CreateContactModal({ isOpen, onClose }: CreateContactModalProps) {
+export function CreateContactModal({ isOpen, onClose, prefillCompanyId }: CreateContactModalProps) {
   const { createContact } = useCRM();
   const companies = useCrmStore((s) => s.companies);
 
@@ -23,8 +24,13 @@ export function CreateContactModal({ isOpen, onClose }: CreateContactModalProps)
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [companyId, setCompanyId] = useState('');
+  const [companyId, setCompanyId] = useState(prefillCompanyId ?? '');
   const [jobTitle, setJobTitle] = useState('');
+
+  // Sync prefill when it changes
+  useEffect(() => {
+    if (prefillCompanyId) setCompanyId(prefillCompanyId);
+  }, [prefillCompanyId]);
   const [lifecycleStatus, setLifecycleStatus] = useState<LifecycleStatus>('lead');
   const [leadSource, setLeadSource] = useState('');
   const [agentId, setAgentId] = useState('');
@@ -39,7 +45,7 @@ export function CreateContactModal({ isOpen, onClose }: CreateContactModalProps)
     setLastName('');
     setEmail('');
     setPhone('');
-    setCompanyId('');
+    setCompanyId(prefillCompanyId ?? '');
     setJobTitle('');
     setLifecycleStatus('lead');
     setLeadSource('');
